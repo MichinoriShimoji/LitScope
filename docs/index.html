@@ -59,8 +59,10 @@ button:disabled{opacity:.55;cursor:not-allowed}
 </header>
 <main>
 <aside>
-  <label>検索条件</label>
-  <textarea id="query" placeholder="例: Irabu Ryukyuan / 尾前方言 / Miyako dialect"></textarea>
+  <label>キーワード（タイトル・抄録・全文）</label>
+  <textarea id="query" placeholder="例: Irabu Ryukyuan / 尾前方言 / Miyako dialect" rows="2"></textarea>
+  <label>著者（任意・AND結合）</label>
+  <input id="author" placeholder="例: Shimoji / 下地 理則 / 木部 暢子">
   <div class="row">
     <div><label>プロジェクトID</label><input id="project" value="irabu"></div>
     <div><label>引用キーワード</label><input id="tag" value="Irabu"></div>
@@ -430,16 +432,29 @@ function uniqueRecords(records){
   }
   return [...seen.values()];
 }
-function plausibleResult(record, query){
-  const haystack = (String(record.title||'')+' '+String(record.container||'')+' '+String(record.abstract_note||'')+' '+String(record.author||'')).toLowerCase();
-  // Use a longer minimum for Latin-only terms, shorter for CJK (Japanese words are denser).
-  const terms = String(query||'').toLowerCase().split(/\s+/).filter(x => {
-    if (!x) return false;
-    const hasCJK = /[　-ヿ㐀-鿿＀-￯]/.test(x);
-    return hasCJK ? x.length >= 2 : x.length > 3;
-  });
-  if (!terms.length) return true;
-  return terms.some(t => haystack.includes(t));
+function plausibleResult(record, query, author){
+  const haystackTitle = (String(record.title||'')+' '+String(record.container||'')+' '+String(record.abstract_note||'')).toLowerCase();
+  const haystackAuthor = String(record.author||'').toLowerCase();
+  // Author check: if specified, it must appear in record's author field
+  if (author){
+    const a = author.toLowerCase().trim();
+    if (a && !haystackAuthor.includes(a)){
+      // Also try last-name only
+      const last = a.split(/[\s,　]+/)[0];
+      if (!last || !haystackAuthor.includes(last)) return false;
+    }
+  }
+  // Query check: at least one keyword should appear (longer threshold for Latin, shorter for CJK)
+  if (query){
+    const haystack = haystackTitle + ' ' + haystackAuthor;
+    const terms = String(query).toLowerCase().split(/\s+/).filter(x => {
+      if (!x) return false;
+      const hasCJK = /[　-ヿ㐀-鿿＀-￯]/.test(x);
+      return hasCJK ? x.length >= 2 : x.length > 3;
+    });
+    if (terms.length && !terms.some(t => haystack.includes(t))) return false;
+  }
+  return true;
 }
 // ============================================================================
 // PDF reference extraction
@@ -819,7 +834,7 @@ function updateBulkCount(){
   }
 }
 
-async function searchAll(query, rows){
+async function searchAll(query, author, rows){
   const timedFetch = async (url) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);
@@ -835,20 +850,38 @@ async function searchAll(query, rows){
     }
     return out;
   };
+  const tag = '['+([query, author?'author:'+author:''].filter(Boolean).join(' / '))+']';
+  // Crossref: query.bibliographic + query.author
+  const crParams = new URLSearchParams();
+  crParams.set('rows', rows);
+  if (query) crParams.set('query.bibliographic', query);
+  if (author) crParams.set('query.author', author);
+  // OpenAlex: search + filter
+  const oaParams = new URLSearchParams();
+  oaParams.set('per-page', rows);
+  if (query) oaParams.set('search', query);
+  if (author) oaParams.set('filter', 'authorships.author.display_name.search:'+author);
+  // CiNii: q + creator
+  const ciParams = new URLSearchParams();
+  ciParams.set('format', 'json');
+  ciParams.set('count', rows);
+  if (query) ciParams.set('q', query);
+  if (author) ciParams.set('creator', author);
+
   const results = await Promise.allSettled([
-    timedFetch('https://api.crossref.org/works?query.bibliographic='+encodeURIComponent(query)+'&rows='+rows)
-      .then(async r => r.ok ? safeMap(((await r.json()).message||{}).items, x => normalizeCrossref(x, query)) : []),
-    timedFetch('https://api.openalex.org/works?search='+encodeURIComponent(query)+'&per-page='+rows)
-      .then(async r => r.ok ? safeMap((await r.json()).results, x => normalizeOpenAlex(x, query)) : []),
-    timedFetch('https://cir.nii.ac.jp/opensearch/all?q='+encodeURIComponent(query)+'&format=json&count='+rows)
-      .then(async r => r.ok ? safeMap((await r.json()).items, x => normalizeCinii(x, query)) : []),
+    timedFetch('https://api.crossref.org/works?'+crParams.toString())
+      .then(async r => r.ok ? safeMap(((await r.json()).message||{}).items, x => normalizeCrossref(x, query||author||'')) : []),
+    timedFetch('https://api.openalex.org/works?'+oaParams.toString())
+      .then(async r => r.ok ? safeMap((await r.json()).results, x => normalizeOpenAlex(x, query||author||'')) : []),
+    timedFetch('https://cir.nii.ac.jp/opensearch/all?'+ciParams.toString())
+      .then(async r => r.ok ? safeMap((await r.json()).items, x => normalizeCinii(x, query||author||'')) : []),
   ]);
   const out = [];
   for (const r of results) {
     if (r.status === 'fulfilled') out.push(...r.value);
     else console.warn('search source failed:', r.reason && r.reason.message);
   }
-  return uniqueRecords(out).filter(r => plausibleResult(r, query));
+  return uniqueRecords(out).filter(r => plausibleResult(r, query, author));
 }
 
 // =============================================================================
@@ -1041,13 +1074,15 @@ function render(){
 // =============================================================================
 async function search(){
   const q = $('query').value.trim();
-  if (!q){ alert('検索条件を入力してください。'); return; }
-  links(q);
+  const author = ($('author')||{}).value ? $('author').value.trim() : '';
+  if (!q && !author){ alert('キーワードまたは著者を入力してください。'); return; }
+  const sigLabel = [q, author?'著者:'+author:''].filter(Boolean).join(' / ');
+  links(q || author);
   $('searchBtn').disabled = true;
   // Optional: clear previous records unless user opted in to accumulate
   const keepPrev = (($('keepPrevious')||{}).checked);
   if (!keepPrev && state.records.length){
-    if (!confirm('現在の本体レコード '+state.records.length+' 件をクリアして「'+q+'」で新しく検索します。続けますか？\n（前回の結果も残したい場合はキャンセル → 「前回の結果を残して追加検索」にチェックを入れてください）')){
+    if (!confirm('現在の本体レコード '+state.records.length+' 件をクリアして「'+sigLabel+'」で新しく検索します。続けますか？\n（前回の結果も残したい場合はキャンセル → 「前回の結果を残して追加検索」にチェックを入れてください）')){
       $('searchBtn').disabled = false;
       setStatus('検索をキャンセルしました。');
       return;
@@ -1058,17 +1093,18 @@ async function search(){
   }
   try {
     // Phase 1: keyword search
-    setStatus('検索中: 「'+q+'」 (Crossref + OpenAlex + CiNii)...');
+    setStatus('検索中: 「'+sigLabel+'」 (Crossref + OpenAlex + CiNii)...');
     const rows = Number($('rows').value||10);
-    const initial = await searchAll(q, rows);
+    const initial = await searchAll(q, author, rows);
     if (!initial.length){
-      setStatus('検索結果なし: 「'+q+'」');
+      setStatus('検索結果なし: 「'+sigLabel+'」');
       return;
     }
     // Mark and add direct hits to records
     for (const r of initial){
       r.search_hit = true;
       r.search_query = q;
+      if (author) r.search_author = author;
     }
     const prevCount = state.records.length;
     state.records = uniqueRecords([...state.records, ...initial]);
@@ -1080,8 +1116,8 @@ async function search(){
       setStatus('検索完了: ヒット '+initial.length+' 件 (新規 '+addedHits+' 件) を本体に追加。孫引きはOFF。');
       return;
     }
-    // Phase 2: extended secondary citation extraction from each hit
-    const parents = state.records.filter(r => r.search_query === q && !r.refs_extracted && (r.doi || r.pdf_url));
+    // Phase 2: extended secondary citation extraction from each fresh search hit
+    const parents = state.records.filter(r => r.search_hit && !r.refs_extracted && (r.doi || r.pdf_url));
     if (!parents.length){
       setStatus('検索完了: ヒット '+initial.length+' 件。孫引き対象なし（DOI/PDF URLなし or すべて処理済）。');
       return;
