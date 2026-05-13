@@ -60,7 +60,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
 <main>
 <aside>
   <label>検索条件</label>
-  <textarea id="query">Irabu Ryukyuan</textarea>
+  <textarea id="query" placeholder="例: Irabu Ryukyuan / 尾前方言 / Miyako dialect"></textarea>
   <div class="row">
     <div><label>プロジェクトID</label><input id="project" value="irabu"></div>
     <div><label>引用キーワード</label><input id="tag" value="Irabu"></div>
@@ -926,6 +926,10 @@ function persist(){
 // Render
 // =============================================================================
 function links(q){
+  if (!q || !q.trim()){
+    $('sourceLinks').innerHTML = '<span class="small" style="color:var(--muted)">（検索条件を入力するとここに各DB横断リンクが出ます）</span>';
+    return;
+  }
   const e = encodeURIComponent(q);
   const g = encodeURIComponent(q+' site:researchmap.jp OR site:researchgate.net OR site:academia.edu');
   $('sourceLinks').innerHTML = ''
