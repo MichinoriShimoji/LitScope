@@ -76,7 +76,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
     <button class="primary" id="searchBtn">検索（孫引き拡張）</button>
     <button id="refreshBtn">再読込</button>
   </div>
-  <div class="small" style="margin-top:6px">検索ヒットを本体に追加し、それぞれの参考文献も <strong>PDF / Crossref</strong> から自動取得・再検証します。所要時間は親の数 × 平均30件で1〜2分目安。</div>
+  <div class="small" style="margin-top:6px">Crossref + OpenAlex + CiNii Research を並列検索 → ヒットを本体に追加 → 各ヒットの参考文献も <strong>PDF / Crossref</strong> から自動取得・再検証。所要時間は親の数 × 平均30件で1〜2分目安。</div>
 
   <label>確認用リンク</label>
   <div class="links small" id="sourceLinks"></div>
@@ -313,6 +313,61 @@ function normalizeCrossref(item, query){
   r.harvard_reference = makeHarvard(r);
   return r;
 }
+function normalizeCinii(item, query){
+  const title = item.title || '';
+  // Authors: CiNii Japanese names usually look like "下地 理則" or "下地, 理則" or "新永, 悠人"
+  const authors = (item['dc:creator'] || []).map(a => {
+    const s = String(a).trim();
+    if (s.includes(',')) return s;
+    const m = s.match(/^(\S+)[\s　]+(.+)$/);
+    return m ? m[1]+', '+m[2] : s;
+  }).join('; ');
+  let year = '';
+  const date = item['prism:publicationDate'];
+  if (date){
+    const m = String(date).match(/(\d{4})/);
+    if (m) year = m[1];
+  }
+  const ciniiType = String(item['dc:type']||'').toLowerCase();
+  const container = item['prism:publicationName'] || '';
+  // CiNii lumps book chapters under "Article" — heuristic: 「『…』」 or "(編)" in container means chapter
+  let type;
+  if (ciniiType === 'book') type = 'book';
+  else if (ciniiType === 'thesis' || /学位論文|博士論文|doctoral/i.test(container)) type = 'thesis';
+  else if (container && (/[『「]/.test(container) || /(\(編\)|（編）|編\)|編』)/.test(container))) type = 'chapter';
+  else type = 'article';
+  let pages = '';
+  if (item['prism:startingPage'] && item['prism:endingPage']) pages = item['prism:startingPage']+'-'+item['prism:endingPage'];
+  else if (item['prism:pageRange']) pages = item['prism:pageRange'];
+  else if (item['prism:startingPage']) pages = item['prism:startingPage'];
+  let doi='', isbn='', issn='', ncid='';
+  for (const id of (item['dc:identifier']||[])){
+    const t = String(id['@type']||'').toUpperCase();
+    const v = id['@value']||'';
+    if (t.includes('DOI')) doi = v;
+    else if (t.includes('ISBN')) isbn = v;
+    else if (t.includes('ISSN')) issn = v;
+    else if (t.includes('NCID')) ncid = v;
+  }
+  const url = (item.link && item.link['@id']) || item['@id'] || '';
+  const volume = String(item['prism:volume']||'').replace(/^[\-－—‐]$/, '');
+  const r = {
+    id: slug((authors||'cinii')+'_'+year+'_'+title),
+    type, author: authors, year, title, container,
+    publisher: item['dc:publisher'] || '',
+    place: '',
+    volume,
+    issue: item['prism:issueIdentifier'] || '',
+    pages,
+    doi, isbn, issn, url,
+    pdf_url: '',
+    scope: '',
+    abstract_note: item.description || '',
+    source_checked: 'CiNii search: '+query + (ncid ? ' (NCID: '+ncid+')' : ''),
+  };
+  r.harvard_reference = makeHarvard(r);
+  return r;
+}
 function normalizeOpenAlex(item, query){
   const author = (item.authorships||[]).map(a => {
     const name = (a.author && a.author.display_name) || '';
@@ -357,8 +412,13 @@ function uniqueRecords(records){
   return out;
 }
 function plausibleResult(record, query){
-  const haystack = (String(record.title||'')+' '+String(record.container||'')+' '+String(record.abstract_note||'')).toLowerCase();
-  const terms = String(query||'').toLowerCase().split(/\s+/).filter(x => x.length > 3);
+  const haystack = (String(record.title||'')+' '+String(record.container||'')+' '+String(record.abstract_note||'')+' '+String(record.author||'')).toLowerCase();
+  // Use a longer minimum for Latin-only terms, shorter for CJK (Japanese words are denser).
+  const terms = String(query||'').toLowerCase().split(/\s+/).filter(x => {
+    if (!x) return false;
+    const hasCJK = /[　-ヿ㐀-鿿＀-￯]/.test(x);
+    return hasCJK ? x.length >= 2 : x.length > 3;
+  });
   if (!terms.length) return true;
   return terms.some(t => haystack.includes(t));
 }
@@ -713,6 +773,8 @@ async function searchAll(query, rows){
       .then(async r => r.ok ? ((await r.json()).message.items.map(x => normalizeCrossref(x, query))) : []),
     timedFetch('https://api.openalex.org/works?search='+encodeURIComponent(query)+'&per-page='+rows)
       .then(async r => r.ok ? ((await r.json()).results.map(x => normalizeOpenAlex(x, query))) : []),
+    timedFetch('https://cir.nii.ac.jp/opensearch/all?q='+encodeURIComponent(query)+'&format=json&count='+rows)
+      .then(async r => r.ok ? ((await r.json()).items||[]).map(x => normalizeCinii(x, query)) : []),
   ]);
   const out = [];
   for (const r of results) {
