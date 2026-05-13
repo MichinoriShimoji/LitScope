@@ -357,6 +357,12 @@ function normalizeCinii(item, query){
     else if (t.includes('NCID')) ncid = v;
   }
   const url = (item.link && item.link['@id']) || item['@id'] || '';
+  // Probe dc:source for PDF-shaped URLs (some CiNii records have direct PDF links)
+  let pdfUrl = '';
+  for (const src of (item['dc:source']||[])){
+    const v = (src && src['@id']) || src || '';
+    if (typeof v === 'string' && /\.pdf(\?|#|$)/i.test(v)){ pdfUrl = v; break; }
+  }
   const volume = String(item['prism:volume']||'').replace(/^[\-－—‐]$/, '');
   const r = {
     id: slug((authors||'cinii')+'_'+year+'_'+title),
@@ -367,7 +373,7 @@ function normalizeCinii(item, query){
     issue: item['prism:issueIdentifier'] || '',
     pages,
     doi, isbn, issn, url,
-    pdf_url: '',
+    pdf_url: pdfUrl,
     scope: '',
     abstract_note: item.description || '',
     source_checked: 'CiNii search: '+query + (ncid ? ' (NCID: '+ncid+')' : ''),
@@ -398,9 +404,12 @@ function normalizeOpenAlex(item, query){
     issn: ((item.primary_location && item.primary_location.source && item.primary_location.source.issn) || []).join(';'),
     // landing_page_url is on primary_location (not on .source). Fix old buggy chain.
     url: (item.primary_location && item.primary_location.landing_page_url) || item.id || '',
-    // Prefer the explicit OA URL; fall back to primary_location.pdf_url if exposed.
+    // Prefer the explicit OA URL; fall back to primary_location.pdf_url, then
+    // landing_page_url if it itself looks like a PDF (some publishers serve the
+    // PDF directly as the "landing" URL).
     pdf_url: (item.open_access && item.open_access.oa_url)
       || (item.primary_location && item.primary_location.pdf_url)
+      || (item.primary_location && /\.pdf(\?|#|$)/i.test(item.primary_location.landing_page_url||'') ? item.primary_location.landing_page_url : '')
       || '',
     scope: '',
     abstract_note: '',
