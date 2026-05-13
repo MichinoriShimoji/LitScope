@@ -433,18 +433,40 @@ if (window.pdfjsLib){
 }
 async function extractTextFromPdfUrl(url){
   if (!window.pdfjsLib) throw new Error('PDF.jsが読み込まれていません。');
+  // 1) Pre-flight HEAD check (fast fail on CORS / 404) to avoid PDF.js hanging.
+  try {
+    const head = await Promise.race([
+      fetch(url, { method: 'HEAD', mode: 'cors' }),
+      new Promise((_, rj) => setTimeout(() => rj(new Error('HEAD timeout (8s)')), 8000)),
+    ]);
+    if (!head.ok && head.status !== 405) throw new Error('HEAD HTTP '+head.status);
+  } catch (e){
+    throw new Error('preflight: '+e.message);
+  }
+  // 2) Actual download via PDF.js, with hard timeout
   const loadingTask = window.pdfjsLib.getDocument({
     url: url,
     disableFontFace: true,
     disableRange: false,
     disableStream: false,
   });
-  const pdf = await loadingTask.promise;
+  const pdf = await Promise.race([
+    loadingTask.promise,
+    new Promise((_, rj) => setTimeout(() => {
+      try { loadingTask.destroy(); } catch (e) {}
+      rj(new Error('PDF load timeout (20s)'));
+    }, 20000)),
+  ]);
   let allText = '';
   for (let p = 1; p <= pdf.numPages; p++){
-    const page = await pdf.getPage(p);
+    const page = await Promise.race([
+      pdf.getPage(p),
+      new Promise((_, rj) => setTimeout(() => rj(new Error('PDF page '+p+' timeout')), 10000)),
+    ]);
     const content = await page.getTextContent();
     allText += content.items.map(it => it.str).join(' ') + '\n';
+    // Early exit if we've gathered a lot already (capped to ~100k chars)
+    if (allText.length > 200000) break;
   }
   return allText;
 }
@@ -631,51 +653,47 @@ async function processReference(ref, parent, queryStr){
   };
 }
 async function extractRefsForParent(parent){
-  // Process a single parent record; mutate state.records and return counts
+  // Process a single parent record; mutate state.records and return counts.
+  // Wrapped so a single failure (PDF stall, network error, parse error) doesn't
+  // kill the whole batch.
   let verified = 0, unverified = 0, refsFetched = 0;
   let source = '';
   let reason = '';
   let refs = [];
-
-  // Try PDF first (if pdf_url exists). PDFs typically have more complete reference lists.
-  if (parent.pdf_url){
-    const pdfRes = await extractRefsViaPdf(parent);
-    if (pdfRes.ok){
-      refs = pdfRes.refs;
-      source = 'pdf';
-    } else {
-      reason = pdfRes.reason;
+  try {
+    if (parent.pdf_url){
+      const pdfRes = await extractRefsViaPdf(parent);
+      if (pdfRes.ok){ refs = pdfRes.refs; source = 'pdf'; }
+      else { reason = pdfRes.reason; }
     }
-  }
-
-  // Fall back to Crossref reference field
-  if (!refs.length && parent.doi){
-    const crRes = await extractRefsViaCrossref(parent);
-    if (crRes.ok){
-      refs = crRes.refs;
-      source = 'crossref';
-    } else if (!reason){
-      reason = crRes.reason;
-    } else {
-      reason = reason + ' / ' + crRes.reason;
+    if (!refs.length && parent.doi){
+      const crRes = await extractRefsViaCrossref(parent);
+      if (crRes.ok){ refs = crRes.refs; source = 'crossref'; }
+      else { reason = reason ? reason + ' / ' + crRes.reason : crRes.reason; }
     }
+    if (!refs.length){
+      parent.refs_extracted = 'no_refs ('+(reason||'no_pdf_or_doi')+')';
+      return { verified, unverified, refsFetched, source: '', reason };
+    }
+    refsFetched = refs.length;
+    for (let k = 0; k < refs.length; k++){
+      if (window._bulkProgressCb) window._bulkProgressCb(k+1, refs.length, source);
+      try {
+        const result = await processReference(refs[k], parent, parent.doi || parent.title);
+        state.records.push(result.rec);
+        if (result.ok) verified++; else unverified++;
+      } catch (e){
+        console.warn('processReference error:', e.message);
+      }
+      await sleep(80);
+    }
+    parent.refs_extracted = source;
+    return { verified, unverified, refsFetched, source };
+  } catch (e){
+    console.error('extractRefsForParent error:', e);
+    parent.refs_extracted = 'error: '+e.message;
+    return { verified, unverified, refsFetched, source: '', reason: e.message };
   }
-
-  if (!refs.length){
-    parent.refs_extracted = 'no_refs ('+(reason||'no_pdf_or_doi')+')';
-    return { verified, unverified, refsFetched, source: '', reason };
-  }
-
-  refsFetched = refs.length;
-  for (let k = 0; k < refs.length; k++){
-    if (window._bulkProgressCb) window._bulkProgressCb(k+1, refs.length, source);
-    const result = await processReference(refs[k], parent, parent.doi || parent.title);
-    state.records.push(result.rec);
-    if (result.ok) verified++; else unverified++;
-    await sleep(80);
-  }
-  parent.refs_extracted = source; // 'pdf' or 'crossref'
-  return { verified, unverified, refsFetched, source };
 }
 
 async function bulkExtractReferences(){
@@ -771,17 +789,26 @@ async function searchAll(query, rows){
       return await fetch(url, { signal: ctrl.signal });
     } finally { clearTimeout(timer); }
   };
+  const safeMap = (items, fn) => {
+    const out = [];
+    for (const it of (items||[])){
+      try { out.push(fn(it)); }
+      catch (e){ console.warn('normalize failed:', e.message, it); }
+    }
+    return out;
+  };
   const results = await Promise.allSettled([
     timedFetch('https://api.crossref.org/works?query.bibliographic='+encodeURIComponent(query)+'&rows='+rows)
-      .then(async r => r.ok ? ((await r.json()).message.items.map(x => normalizeCrossref(x, query))) : []),
+      .then(async r => r.ok ? safeMap(((await r.json()).message||{}).items, x => normalizeCrossref(x, query)) : []),
     timedFetch('https://api.openalex.org/works?search='+encodeURIComponent(query)+'&per-page='+rows)
-      .then(async r => r.ok ? ((await r.json()).results.map(x => normalizeOpenAlex(x, query))) : []),
+      .then(async r => r.ok ? safeMap((await r.json()).results, x => normalizeOpenAlex(x, query)) : []),
     timedFetch('https://cir.nii.ac.jp/opensearch/all?q='+encodeURIComponent(query)+'&format=json&count='+rows)
-      .then(async r => r.ok ? ((await r.json()).items||[]).map(x => normalizeCinii(x, query)) : []),
+      .then(async r => r.ok ? safeMap((await r.json()).items, x => normalizeCinii(x, query)) : []),
   ]);
   const out = [];
   for (const r of results) {
     if (r.status === 'fulfilled') out.push(...r.value);
+    else console.warn('search source failed:', r.reason && r.reason.message);
   }
   return uniqueRecords(out).filter(r => plausibleResult(r, query));
 }
