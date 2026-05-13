@@ -1,0 +1,17 @@
+# PDFs are excluded (copyright + size)
+pdfs/
+
+# macOS metadata
+.DS_Store
+
+# R session
+.Rhistory
+
+# Editor / OS junk
+*~
+*.swp
+.idea/
+.vscode/
+
+# Local tool state (no longer used in static version, but just in case)
+literature_tool_state.json

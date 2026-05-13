@@ -1,0 +1,1119 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Literature Pipeline</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+:root{color-scheme:light;--ink:#1d252c;--muted:#64717d;--line:#d9e0e6;--bg:#f6f8fa;--panel:#fff;--accent:#006d77;--warn:#996515}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:2}
+h1{font-size:18px;margin:0;font-weight:650}
+.meta{color:var(--muted);font-size:12px}
+main{display:grid;grid-template-columns:360px 1fr;min-height:calc(100vh - 54px)}
+aside{border-right:1px solid var(--line);background:#fff;padding:16px;overflow:auto}
+section{padding:16px;overflow:auto}
+label{display:block;font-size:12px;color:var(--muted);margin:12px 0 5px}
+input,textarea,select{width:100%;border:1px solid var(--line);border-radius:6px;padding:8px 9px;background:#fff;color:var(--ink);font:inherit}
+textarea{min-height:74px;resize:vertical}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:8px 10px;cursor:pointer;font-weight:600;color:var(--ink)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.warn{color:var(--warn)}
+button:disabled{opacity:.55;cursor:not-allowed}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tab{padding:7px 10px}
+.tab.active{background:#e8f2f3;border-color:#b7d8dc;color:#004e56}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
+.item{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:190px}
+.title{font-weight:700}
+.small{font-size:12px;color:var(--muted)}
+.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 7px;font-size:12px;color:var(--muted);margin-right:4px}
+.toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px}
+.status{font-size:12px;color:var(--ink);white-space:pre-wrap;margin-top:12px;padding:8px 10px;background:#f6f8fa;border:1px solid var(--line);border-radius:6px;min-height:24px}
+.status:empty{display:none}
+.edit{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.edit label{margin-top:0}
+.wide{grid-column:1/-1}
+.links a,.item a{color:var(--accent);margin-right:8px}
+.empty{padding:24px;color:var(--muted);border:1px dashed var(--line);background:#fff;border-radius:8px}
+.fileInput{display:none}
+.fileLabel{display:inline-block;border:1px solid var(--line);background:#fff;border-radius:6px;padding:8px 10px;cursor:pointer;font-weight:600;color:var(--ink)}
+.divider{height:1px;background:var(--line);margin:14px 0}
+.section-title{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:8px 0 4px;font-weight:700}
+.item.unverified-item{border-color:#f59e0b;border-width:2px;background:#fffbef}
+.unverified-banner{background:#fef0c7;color:#8c2d11;padding:8px 10px;border-radius:6px;font-size:12px;line-height:1.45}
+.unverified-banner strong{color:#7a4a02}
+.pill.unverified-pill{background:#fde68a;color:#7a4a02;border-color:#f59e0b;font-weight:700}
+@media(max-width:900px){main{grid-template-columns:1fr} aside{border-right:0;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Literature Pipeline <span class="small" style="font-weight:400">(static)</span></h1>
+  <div class="meta" id="counts">loading</div>
+</header>
+<main>
+<aside>
+  <div class="section-title" style="background:#e8f2f3;color:#004e56;padding:6px 10px;border-radius:6px;margin-bottom:8px">Stage 1 — キーワード検索</div>
+  <label>検索条件</label>
+  <textarea id="query">Irabu Ryukyuan</textarea>
+  <div class="row">
+    <div><label>プロジェクトID</label><input id="project" value="irabu"></div>
+    <div><label>引用キーワード</label><input id="tag" value="Irabu"></div>
+  </div>
+  <div class="row">
+    <div><label>件数</label><input id="rows" type="number" value="10" min="1" max="50"></div>
+    <div><label>保存名</label><input id="projectPreview" value="irabu_dialect_literature" readonly></div>
+  </div>
+  <div class="actions">
+    <button class="primary" id="searchBtn">検索</button>
+    <button id="refreshBtn">再読込</button>
+    <button id="addAllBtn">候補を全件本体へ追加</button>
+  </div>
+
+  <label>確認用リンク</label>
+  <div class="links small" id="sourceLinks"></div>
+
+  <div class="divider"></div>
+
+  <div class="section-title" style="background:#fff8f4;color:#996515;padding:6px 10px;border-radius:6px;margin-bottom:8px">Stage 2 — 孫引き一括抽出</div>
+  <div class="small" style="margin-bottom:6px">本体CSV内の <strong>DOI付き</strong>レコードを親論文として、参考文献を Crossref から再取得し、自動再検証します。未検証のものは黄色く表示されます。</div>
+  <div class="small" id="bulkInfo">対象: <span id="bulkCount">0</span>件 / 本体内DOI付き<span id="bulkTotalCount">0</span>件</div>
+  <div style="margin:8px 0">
+    <label style="display:inline-block;margin:0 12px 0 0;color:var(--ink)"><input id="bulkSkipProcessed" type="checkbox" style="width:auto" checked> 処理済の親をスキップ</label>
+  </div>
+  <div class="actions">
+    <button class="primary" id="bulkExtractBtn">本体の全レコードから参考文献を一括抽出</button>
+    <button id="resetExtractedBtn">処理済フラグをリセット</button>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section-title" style="background:#f5f9fd;color:#1d4d80;padding:6px 10px;border-radius:6px;margin-bottom:8px">Stage 3 — 確認・ダウンロード</div>
+  <div class="actions">
+    <button class="primary" id="zipBtn">ZIPでまとめてダウンロード</button>
+    <button id="zoteroBtn">Zoteroへ直接送信</button>
+  </div>
+  <div class="small" style="margin-top:6px">
+    ZIPには <code>.csv</code>／<code>.bib</code>／Zotero用 <code>.bib</code>／PDFのURLリスト／Derivative の5ファイルが入ります。<br>
+    Zotero送信は Zotero Desktop が起動している場合のみ動きます（<code>localhost:23119</code> に直接POST）。
+  </div>
+
+  <details style="margin-top:14px">
+    <summary class="small" style="cursor:pointer">個別ダウンロード／既存CSVを取り込む／localStorageをクリア</summary>
+    <div class="section-title" style="margin-top:8px">個別ダウンロード（確認済のみ）</div>
+    <div class="actions">
+      <button id="dlCsvBtn">CSV</button>
+      <button id="dlBibBtn">BibTeX</button>
+      <button id="dlZotBtn">Zotero用BibTeX</button>
+      <button id="dlPdfBtn">PDFリスト</button>
+      <button id="dlUnvBtn">未検証CSV</button>
+    </div>
+    <div class="section-title">既存CSVを取り込む</div>
+    <div class="actions">
+      <label class="fileLabel" for="importCsv">本体CSV</label>
+      <input class="fileInput" type="file" id="importCsv" accept=".csv,text/csv">
+    </div>
+    <div class="small" style="margin-top:6px">アップロードすると現在の作業データを上書きします。<code>unverified</code> 列があれば未検証マークとして読み込みます。</div>
+    <div class="section-title">localStorage</div>
+    <div class="actions">
+      <button class="warn" id="clearProjectBtn">このプロジェクトをクリア</button>
+    </div>
+  </details>
+
+  <div class="status" id="status"></div>
+</aside>
+<section>
+  <div class="tabs">
+    <button class="tab active" data-tab="results">検索候補</button>
+    <button class="tab" data-tab="records">本体CSV<span id="recordsBadge"></span></button>
+  </div>
+  <div class="toolbar">
+    <strong id="viewTitle">検索候補</strong>
+    <div class="small" id="recordsControls" style="display:none">
+      <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+        <input id="filterUnverified" type="checkbox" style="width:auto"> 未検証のみ表示
+      </label>
+    </div>
+  </div>
+  <div id="content"></div>
+</section>
+</main>
+<script>
+// =============================================================================
+// Constants
+// =============================================================================
+const DEFAULT_PROJECT = 'irabu';
+const CSV_HEADER = ['id','type','author','year','title','container','publisher','place','volume','issue','pages','doi','isbn','issn','url','pdf_url','scope','abstract_note','harvard_reference','source_checked'];
+const UNVERIFIED_CSV_HEADER = [...CSV_HEADER, 'unverified','verification_failed_reason','derived_from','derived_citation_as_found'];
+
+// =============================================================================
+// Helpers (ported from server.js)
+// =============================================================================
+function projectSlug(input){
+  return (slug(input || DEFAULT_PROJECT) || DEFAULT_PROJECT);
+}
+function slug(input){
+  return String(input || 'untitled')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^\p{Letter}\p{Number}]+/gu,'_')
+    .replace(/^_+|_+$/g,'')
+    .slice(0,60) || ('item_'+Date.now());
+}
+function projectFiles(projectInput){
+  const project = projectSlug(projectInput);
+  if (project === DEFAULT_PROJECT){
+    return { project, csv:'irabu_dialect_literature.csv', bib:'irabu_dialect_literature.bib', zoteroBib:'zotero_import_irabu_tagged.bib', derivative:'irabu_derivative_candidate_verification.csv' };
+  }
+  return {
+    project,
+    csv: project+'_literature.csv',
+    bib: project+'_literature.bib',
+    zoteroBib: project+'_zotero_import_tagged.bib',
+    derivative: project+'_derivative_candidate_verification.csv',
+  };
+}
+function csvEscape(value){
+  const s = value==null ? '' : String(value);
+  return /[",\n\r]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+function csvRows(rows, header){
+  return [header.join(','), ...rows.map(r => header.map(h => csvEscape(r[h]||'')).join(','))].join('\n') + '\n';
+}
+function parseCSV(text){
+  const rows=[]; let row=[]; let cell=''; let q=false;
+  for (let i=0;i<text.length;i++){
+    const c=text[i], n=text[i+1];
+    if (q){
+      if (c==='"' && n==='"'){ cell+='"'; i++; }
+      else if (c==='"') q=false;
+      else cell+=c;
+    } else if (c==='"') q=true;
+    else if (c===','){ row.push(cell); cell=''; }
+    else if (c==='\n' || c==='\r'){
+      if (c==='\r' && n==='\n') i++;
+      row.push(cell);
+      if (row.length>1 || row[0]) rows.push(row);
+      row=[]; cell='';
+    } else cell+=c;
+  }
+  if (cell || row.length){ row.push(cell); rows.push(row); }
+  const header = rows.shift() || [];
+  return rows.map(r => Object.fromEntries(header.map((h,i)=>[h, r[i]||''])));
+}
+function initials(author){
+  const [last, first=''] = String(author||'').split(',').map(x=>x.trim());
+  if (!first) return last||'';
+  return last+', '+first.split(/\s+/).map(x => x[0]+'.').join(' ');
+}
+function makeHarvard(r){
+  const a=r.author||'Unknown', y=r.year||'n.d.', title=r.title||'Untitled';
+  const pages=r.pages?', pp. '+r.pages:'';
+  const doi=r.doi?'. doi:'+r.doi:'';
+  if (r.type==='book') return a.replace(/, /g,'')+' ('+y+') '+title+'. '+(r.place?r.place+': ':'')+(r.publisher||'')+doi+'.';
+  if (r.type==='chapter') return initials(a)+' ('+y+") '"+title+"', in "+(r.container||'')+pages+doi+'.';
+  return initials(a)+' ('+y+") '"+title+"', "+(r.container||'')+(r.volume?', '+r.volume:'')+(r.issue?'('+r.issue+')':'')+pages+doi+'.';
+}
+function yearFromDateParts(value){
+  const year = value && value['date-parts'] && value['date-parts'][0] && value['date-parts'][0][0];
+  return year ? String(year) : '';
+}
+function crossrefYear(item){
+  return yearFromDateParts(item.issued) || yearFromDateParts(item.published)
+    || yearFromDateParts(item['published-print']) || yearFromDateParts(item['published-online'])
+    || yearFromDateParts(item.created) || yearFromDateParts(item.deposited) || yearFromDateParts(item.indexed) || '';
+}
+function bibEscape(s){ return String(s||'').replace(/[{}]/g,''); }
+function creatorsToBibAuthor(author){
+  return String(author||'').split(';').map(a=>a.trim()).filter(Boolean).join(' and ');
+}
+function toBib(records, tag){
+  return records.map(r => {
+    const key = slug((r.author||'anon').split(',')[0]+'_'+r.year+'_'+r.title).replace(/^_+/,'');
+    const type = r.type==='book'?'book':r.type==='chapter'?'incollection':r.type==='thesis'?'phdthesis':'article';
+    const fields = [];
+    fields.push(['author', creatorsToBibAuthor(r.author)]);
+    fields.push(['year', r.year]);
+    fields.push(['title', r.title]);
+    if (type==='article') fields.push(['journal', r.container]);
+    if (type==='incollection') fields.push(['booktitle', r.container]);
+    if (r.publisher) fields.push(['publisher', r.publisher]);
+    if (r.place) fields.push(['address', r.place]);
+    if (r.volume) fields.push(['volume', r.volume]);
+    if (r.issue) fields.push(['number', r.issue]);
+    if (r.pages) fields.push(['pages', r.pages.replace('-','--')]);
+    if (r.doi) fields.push(['doi', r.doi]);
+    if (r.isbn) fields.push(['isbn', r.isbn]);
+    if (r.issn) fields.push(['issn', r.issn]);
+    if (r.url) fields.push(['url', r.url]);
+    if (r.abstract_note) fields.push(['abstract', r.abstract_note]);
+    if (r.source_checked) fields.push(['note', r.source_checked]);
+    if (tag) fields.push(['keywords', tag]);
+    const body = fields.filter(([,v])=>v).map(([k,v])=>'  '+k+' = {'+bibEscape(v)+'},').join('\n');
+    return '@'+type+'{'+key+',\n'+body+'\n}';
+  }).join('\n\n') + '\n';
+}
+function isCJK(s){
+  return /[　-ヿ㐀-鿿＀-￯]/.test(s);
+}
+function pickBestTitle(titles, langHint){
+  // titles: array of strings (Crossref returns array; sometimes 2+ for bilingual works)
+  // langHint: ISO language code (e.g. 'en', 'ja') — may be missing
+  if (!titles || !titles.length) return { title:'', altTitle:'' };
+  if (titles.length === 1) return { title: titles[0], altTitle:'' };
+  const lang = (langHint||'').toLowerCase().slice(0,2);
+  const cjk = titles.filter(isCJK);
+  const latin = titles.filter(t => !isCJK(t));
+  // Use language hint when reliable
+  if (lang === 'en' && latin.length){
+    return { title: latin[0], altTitle: cjk[0] || latin.slice(1).join(' / ') };
+  }
+  if (lang === 'ja' && cjk.length){
+    return { title: cjk[0], altTitle: latin[0] || cjk.slice(1).join(' / ') };
+  }
+  // No reliable hint — heuristic: if container looks like a Japanese journal (CJK in container), prefer CJK
+  // Otherwise default to first title and store others as alt
+  return { title: titles[0], altTitle: titles.slice(1).join(' / ') };
+}
+function normalizeCrossref(item, query){
+  const author = (item.author||[]).map(a=>[a.family,a.given].filter(Boolean).join(', ')).join('; ');
+  const year = crossrefYear(item);
+  const containerTitles = item['container-title'] || [];
+  const containerLang = item.language || '';
+  // Pick container title (journal/book) the same way to be consistent with the main title's language
+  const { title, altTitle } = pickBestTitle(item.title, containerLang);
+  const { title: container, altTitle: altContainer } = pickBestTitle(containerTitles, containerLang);
+  const type = item.type==='book-chapter'?'chapter':item.type==='book'?'book':'article';
+  const altParts = [];
+  if (altTitle) altParts.push('alt-title: '+altTitle);
+  if (altContainer) altParts.push('alt-container: '+altContainer);
+  const altNote = altParts.length ? '\n['+altParts.join(' / ')+']' : '';
+  const r = {
+    id: slug((author||'crossref')+'_'+year+'_'+title),
+    type, author, year, title, container,
+    publisher: item.publisher||'',
+    place: '',
+    volume: item.volume||'',
+    issue: item.issue||'',
+    pages: item.page||'',
+    doi: item.DOI||'',
+    isbn: (item.ISBN||[]).join(';'),
+    issn: (item.ISSN||[]).join(';'),
+    url: item.URL||'',
+    pdf_url: '',
+    scope: '',
+    abstract_note: item.abstract ? item.abstract.replace(/<[^>]+>/g,'') : '',
+    source_checked: 'Crossref search: '+query+(containerLang?' (lang='+containerLang+')':'')+altNote,
+    alt_title: altTitle,
+  };
+  r.harvard_reference = makeHarvard(r);
+  return r;
+}
+function normalizeOpenAlex(item, query){
+  const author = (item.authorships||[]).map(a => {
+    const name = (a.author && a.author.display_name) || '';
+    const parts = name.split(/\s+/);
+    return parts.length>1 ? parts.pop()+', '+parts.join(' ') : name;
+  }).join('; ');
+  const r = {
+    id: slug((author||'openalex')+'_'+(item.publication_year||'')+'_'+(item.display_name||'')),
+    type: item.type==='book-chapter'?'chapter':item.type==='book'?'book':'article',
+    author,
+    year: item.publication_year||'',
+    title: item.display_name||'',
+    container: item.primary_location && item.primary_location.source && item.primary_location.source.display_name || '',
+    publisher: item.primary_location && item.primary_location.source && item.primary_location.source.host_organization_name || '',
+    place: '',
+    volume: (item.biblio && item.biblio.volume) || '',
+    issue: (item.biblio && item.biblio.issue) || '',
+    pages: (item.biblio && item.biblio.first_page && item.biblio.last_page) ? item.biblio.first_page+'-'+item.biblio.last_page : ((item.biblio && item.biblio.first_page)||''),
+    doi: item.doi ? item.doi.replace(/^https:\/\/doi.org\//,'') : '',
+    isbn: '',
+    issn: ((item.primary_location && item.primary_location.source && item.primary_location.source.issn) || []).join(';'),
+    url: (item.primary_location && item.primary_location.source && item.primary_location.landing_page_url) || item.id || '',
+    pdf_url: (item.open_access && item.open_access.oa_url) || '',
+    scope: '',
+    abstract_note: '',
+    source_checked: 'OpenAlex search: '+query,
+  };
+  r.harvard_reference = makeHarvard(r);
+  return r;
+}
+function uniqueRecords(records){
+  const seen=new Set(); const out=[];
+  for (const r of records){
+    const k = (r.doi && 'doi:'+r.doi.toLowerCase())
+      || (r.id && 'id:'+r.id)
+      || (r.candidate_id && 'candidate:'+r.candidate_id)
+      || 'title:'+String(r.title||r.normalized_candidate||'').toLowerCase()+':'+(r.year||'');
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+  }
+  return out;
+}
+function plausibleResult(record, query){
+  const haystack = (String(record.title||'')+' '+String(record.container||'')+' '+String(record.abstract_note||'')).toLowerCase();
+  const terms = String(query||'').toLowerCase().split(/\s+/).filter(x => x.length > 3);
+  if (!terms.length) return true;
+  return terms.some(t => haystack.includes(t));
+}
+// ============================================================================
+// Reference extraction (孫引き再検証)
+// ============================================================================
+function parseUnstructured(text){
+  // Extract (author, year, title) heuristically from a free-form reference string.
+  if (!text) return { author:'', year:'', title:'', normalized:'' };
+  const t = String(text).replace(/\s+/g,' ').trim();
+  // Year: prefer the (YEAR) pattern
+  let year = '';
+  const m1 = t.match(/\((\d{4})[a-z]?\)/);
+  if (m1) year = m1[1];
+  else {
+    const m2 = t.match(/\b(19|20)\d{2}\b/);
+    if (m2) year = m2[0];
+  }
+  // Author = text before "(YEAR)" or before first ". "
+  let author = '';
+  const aMatch = t.match(/^([^()]{2,80}?)\s*\(/);
+  if (aMatch) author = aMatch[1].trim().replace(/[,\.]+$/, '');
+  else author = t.split(/[\.,]\s/)[0].trim();
+  // Title: between ") " and the next ". " (heuristic)
+  let title = '';
+  const tMatch = t.match(/\)\s*[\.\:]?\s*[“"']?([^.]{4,200}?)[”"']?\s*[\.\,]\s*[A-Z　-ヿ㐀-鿿]/);
+  if (tMatch) title = tMatch[1].trim();
+  // Fallback: title-like longest middle chunk
+  if (!title){
+    const parts = t.split(/[\.;]\s+/);
+    if (parts.length >= 2) title = parts[1].trim();
+  }
+  return { author, year, title, normalized: t };
+}
+function titleSimilarity(a, b){
+  if (!a || !b) return 0;
+  const norm = s => s.toLowerCase().replace(/[^\p{Letter}\p{Number}\s]/gu,' ').split(/\s+/).filter(w => w.length > 2);
+  const A = new Set(norm(a));
+  const B = new Set(norm(b));
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  for (const w of A) if (B.has(w)) inter++;
+  return inter / new Set([...A, ...B]).size;
+}
+function pickConfidentMatch(results, parsed){
+  if (!results || !results.length) return null;
+  for (const r of results){
+    const yearOK = !parsed.year || !r.year || String(r.year) === String(parsed.year);
+    const lastA = (parsed.author||'').toLowerCase().split(/[,\s]+/)[0] || '';
+    const lastR = (r.author||'').toLowerCase().split(/[,\s;]+/)[0] || '';
+    const authorOK = !lastA || !lastR || lastA.length<2 || lastR.length<2 || lastA.includes(lastR) || lastR.includes(lastA);
+    const sim = titleSimilarity(parsed.title||'', r.title||'');
+    const titleOK = sim >= 0.5;
+    // Confident if year+author OR strong title match
+    if ((yearOK && authorOK && sim >= 0.3) || sim >= 0.7) return r;
+  }
+  return null;
+}
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+async function processReference(ref, parent, queryStr){
+  // 1) Try DOI lookup
+  if (ref.DOI){
+    try {
+      const r = await fetch('https://api.crossref.org/works/'+encodeURIComponent(ref.DOI));
+      if (r.ok){
+        const item = (await r.json()).message;
+        const rec = normalizeCrossref(item, 'ref of '+(parent.doi||parent.title||'?'));
+        rec.parent_doi = parent.doi || '';
+        rec.extracted = true;
+        return { ok:true, rec, mode:'doi-lookup' };
+      }
+    } catch (e){ /* fall through */ }
+  }
+  // 2) Try title-based search from unstructured text
+  const unstructured = ref.unstructured || '';
+  const parsed = parseUnstructured(unstructured);
+  if (parsed.title && parsed.title.length >= 5){
+    try {
+      const results = await searchAll(parsed.title, 5);
+      const match = pickConfidentMatch(results, parsed);
+      if (match){
+        match.parent_doi = parent.doi || '';
+        match.extracted = true;
+        return { ok:true, rec: match, mode:'title-search' };
+      }
+    } catch (e){ /* fall through */ }
+  }
+  // 3) Failed → return a record with unverified flag (will go to records list as a doubtful item)
+  const reason = ref.DOI ? 'DOI lookup failed: '+ref.DOI : (parsed.title ? 'タイトル検索で確実な一致がなかった' : 'パース不能');
+  return {
+    ok: false,
+    rec: {
+      id: 'unverified_'+slug((parent.doi||'')+'_'+(ref.key||ref.DOI||parsed.title||Date.now())),
+      type: 'article',
+      author: parsed.author || '',
+      year: parsed.year || '',
+      title: parsed.title || (unstructured ? unstructured.slice(0,80) : '(タイトル未抽出)'),
+      container: '',
+      publisher: '',
+      doi: ref.DOI || '',
+      url: '',
+      pdf_url: '',
+      source_checked: ref.DOI ? 'tried DOI lookup: '+ref.DOI : (unstructured ? 'tried title search from unstructured ref' : 'unparseable'),
+      harvard_reference: '',
+      unverified: true,
+      extracted: true,
+      parent_doi: parent.doi || '',
+      derived_from: parent.doi || parent.title || '',
+      derived_citation_as_found: unstructured || JSON.stringify(ref).slice(0,300),
+      verification_failed_reason: reason,
+    },
+  };
+}
+async function extractRefsForParent(parent){
+  // Process a single parent record; mutate state.records and return counts
+  let verified = 0, unverified = 0, refsFetched = 0;
+  try {
+    const r = await fetch('https://api.crossref.org/works/'+encodeURIComponent(parent.doi));
+    if (!r.ok){
+      parent.refs_extracted = 'failed: HTTP '+r.status;
+      return { verified, unverified, refsFetched, error: 'HTTP '+r.status };
+    }
+    const item = (await r.json()).message;
+    const refs = item.reference || [];
+    refsFetched = refs.length;
+    if (!refs.length){
+      parent.refs_extracted = 'no_references_metadata';
+      return { verified, unverified, refsFetched };
+    }
+    for (let k = 0; k < refs.length; k++){
+      if (window._bulkProgressCb) window._bulkProgressCb(k+1, refs.length);
+      const result = await processReference(refs[k], parent, parent.doi);
+      state.records.push(result.rec);
+      if (result.ok) verified++; else unverified++;
+      await sleep(80);
+    }
+    parent.refs_extracted = true;
+    return { verified, unverified, refsFetched };
+  } catch (e){
+    parent.refs_extracted = 'error: '+e.message;
+    return { verified, unverified, refsFetched, error: e.message };
+  }
+}
+
+async function extractReferences(i, kind){
+  // Per-card extraction (Stage 2 single)
+  const arr = kind === 'results' ? state.results : state.records;
+  const parent = arr[i];
+  if (!parent || !parent.doi){ setStatus('参考文献の取り込みにはDOIが必要です。'); return; }
+  // Promote results to records if needed (extraction operates on records)
+  if (kind === 'results'){
+    state.records = uniqueRecords([...state.records, parent]);
+  }
+  // Find the parent in records
+  const recIdx = state.records.findIndex(r => r.doi === parent.doi);
+  const recParent = state.records[recIdx];
+  setStatus('親論文を取得中: '+recParent.doi);
+  window._bulkProgressCb = (k, total) => setStatus('参考文献 '+k+'/'+total+' を検証中...');
+  const { verified, unverified, refsFetched, error } = await extractRefsForParent(recParent);
+  window._bulkProgressCb = null;
+  state.records = uniqueRecords(state.records);
+  persist();
+  tab = 'records';
+  if (unverified > 0){
+    const f = $('filterUnverified'); if (f) f.checked = true;
+  }
+  render();
+  if (error){
+    setStatus('親論文取得失敗: '+error+' (親: '+recParent.doi+')');
+  } else if (!refsFetched){
+    setStatus('この論文には参考文献メタデータがCrossrefに登録されていません。');
+  } else {
+    setStatus('検証完了: 確認済 '+verified+' 件、未検証 '+unverified+' 件を本体に追加（親: '+recParent.doi+'）'+(unverified?'\n本体タブで「未検証のみ表示」をONにしました。黄色いカードを編集／削除してください。':''));
+  }
+}
+
+async function bulkExtractReferences(){
+  try {
+    const skipEl = $('bulkSkipProcessed');
+    const skip = skipEl ? !!skipEl.checked : true;
+    const withDoi = state.records.filter(r => r.doi);
+    const dois = withDoi.filter(r => !skip || !r.refs_extracted);
+    if (!withDoi.length){
+      alert('本体CSVに DOI 付きのレコードがありません。\nStage 1 でCrossref/OpenAlex検索を実行し、結果を「本体へ追加」してから Stage 2 を実行してください。');
+      return;
+    }
+    if (!dois.length){
+      alert('DOI付きレコードは '+withDoi.length+' 件ありますが、すべて「処理済」になっています。\n「処理済フラグをリセット」を押すか、「処理済の親をスキップ」のチェックを外してください。');
+      return;
+    }
+    if (!confirm(dois.length+' 件のレコードから参考文献を一括抽出します。\n各レコードあたり数秒、合計で数十秒〜数分かかります。続けますか？')) return;
+    $('bulkExtractBtn').disabled = true;
+    let totalVerified = 0, totalUnverified = 0, totalRefs = 0, errs = 0;
+    for (let n = 0; n < dois.length; n++){
+      const parent = dois[n];
+      window._bulkProgressCb = (k, total) => setStatus('Stage 2 一括抽出 — 親 '+(n+1)+'/'+dois.length+' ('+parent.doi+') — 参考文献 '+k+'/'+total+' 検証中... (累計: 確認済 '+totalVerified+' / 未検証 '+totalUnverified+')');
+      setStatus('Stage 2 一括抽出 — 親 '+(n+1)+'/'+dois.length+' ('+parent.doi+') を処理中...');
+      const { verified, unverified, refsFetched, error } = await extractRefsForParent(parent);
+      totalVerified += verified;
+      totalUnverified += unverified;
+      totalRefs += refsFetched;
+      if (error) errs++;
+    }
+    window._bulkProgressCb = null;
+    state.records = uniqueRecords(state.records);
+    persist();
+    tab = 'records';
+    if (totalUnverified > 0){
+      const f = $('filterUnverified'); if (f) f.checked = true;
+    }
+    render();
+    $('bulkExtractBtn').disabled = false;
+    setStatus('一括抽出完了: '+dois.length+' 親 → 参考文献 '+totalRefs+' 件処理 → 確認済 '+totalVerified+' / 未検証 '+totalUnverified+(errs?' / エラー '+errs:'')+(totalUnverified ? '\n本体タブで「未検証のみ表示」をONにしました。黄色いカードを編集／削除してから ZIP に進んでください。' : ''));
+  } catch (e){
+    $('bulkExtractBtn').disabled = false;
+    setStatus('Stage 2 でエラー発生: '+e.message);
+    alert('Stage 2 でエラー発生: '+e.message+'\n\nブラウザのコンソール（F12 → Console）で詳細を確認できます。');
+    console.error('bulkExtractReferences error:', e);
+  }
+}
+
+function resetExtractedFlags(){
+  if (!confirm('本体内すべての「処理済」フラグをリセットします。同じ親論文を再度孫引きできるようになります。よろしいですか？')) return;
+  for (const r of state.records){ delete r.refs_extracted; }
+  persist();
+  setStatus('処理済フラグをリセットしました。');
+}
+
+function updateBulkCount(){
+  const skipEl = $('bulkSkipProcessed');
+  const skip = skipEl ? skipEl.checked : true;
+  const withDoi = state.records.filter(r => r.doi);
+  const targets = withDoi.filter(r => !skip || !r.refs_extracted);
+  const ct = $('bulkCount'); if (ct) ct.textContent = targets.length;
+  const tt = $('bulkTotalCount'); if (tt) tt.textContent = withDoi.length;
+  const btn = $('bulkExtractBtn');
+  if (btn){
+    if (!withDoi.length){
+      btn.disabled = true;
+      btn.title = '本体CSVにDOI付きレコードがありません。Stage 1で検索して追加してください。';
+    } else if (!targets.length){
+      btn.disabled = true;
+      btn.title = 'DOI付きレコードはすべて処理済です。「処理済フラグをリセット」または「処理済の親をスキップ」のチェックを外してください。';
+    } else {
+      btn.disabled = false;
+      btn.title = targets.length+'件の親論文から参考文献を一括抽出します';
+    }
+  }
+}
+
+async function searchAll(query, rows){
+  const timedFetch = async (url) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      return await fetch(url, { signal: ctrl.signal });
+    } finally { clearTimeout(timer); }
+  };
+  const results = await Promise.allSettled([
+    timedFetch('https://api.crossref.org/works?query.bibliographic='+encodeURIComponent(query)+'&rows='+rows)
+      .then(async r => r.ok ? ((await r.json()).message.items.map(x => normalizeCrossref(x, query))) : []),
+    timedFetch('https://api.openalex.org/works?search='+encodeURIComponent(query)+'&per-page='+rows)
+      .then(async r => r.ok ? ((await r.json()).results.map(x => normalizeOpenAlex(x, query))) : []),
+  ]);
+  const out = [];
+  for (const r of results) {
+    if (r.status === 'fulfilled') out.push(...r.value);
+  }
+  return uniqueRecords(out).filter(r => plausibleResult(r, query));
+}
+
+// =============================================================================
+// State (localStorage)
+// =============================================================================
+function stateKey(project){ return 'litpipe:'+projectSlug(project); }
+function loadProjectState(project){
+  const raw = localStorage.getItem(stateKey(project));
+  if (!raw) return { records: [], derivatives: [] };
+  try { return JSON.parse(raw); }
+  catch (e) { return { records: [], derivatives: [] }; }
+}
+function saveProjectState(project, ps){
+  localStorage.setItem(stateKey(project), JSON.stringify(ps));
+}
+function currentProject(){ return document.getElementById('project').value.trim() || DEFAULT_PROJECT; }
+function syncProjectPreview(){
+  const f = projectFiles(currentProject());
+  document.getElementById('projectPreview').value = f.csv;
+}
+
+// =============================================================================
+// UI state
+// =============================================================================
+let state = { records: [], derivatives: [], results: [], counts: {} };
+let tab = 'results';
+const $ = id => document.getElementById(id);
+function setStatus(s){ $('status').textContent = s; }
+function reloadFromStorage(){
+  const ps = loadProjectState(currentProject());
+  state.records = ps.records || [];
+  // Migrate any legacy derivative entries into records as unverified items (one-shot)
+  const legacyDeriv = ps.derivatives || [];
+  if (legacyDeriv.length){
+    for (const d of legacyDeriv){
+      state.records.push({
+        id: d.candidate_id || ('migrated_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),
+        type: 'article',
+        author: '',
+        year: '',
+        title: d.normalized_candidate || d.derived_citation_as_found || '(legacy derivative)',
+        container: '',
+        publisher: '',
+        doi: '',
+        url: '',
+        pdf_url: '',
+        source_checked: '',
+        harvard_reference: d.final_or_provisional_harvard_reference || '',
+        unverified: true,
+        derived_from: d.derived_from || '',
+        derived_citation_as_found: d.derived_citation_as_found || '',
+        verification_failed_reason: d.verification_sources || '(legacy derivative — migrated)',
+      });
+    }
+    state.records = uniqueRecords(state.records);
+    saveProjectState(currentProject(), { records: state.records });
+    setStatus('過去のderivativeエントリ '+legacyDeriv.length+' 件を未検証として本体に統合しました。');
+  }
+  state.derivatives = [];
+  const unverifiedCount = state.records.filter(r => r.unverified).length;
+  state.counts = { records: state.records.length, unverified: unverifiedCount };
+  const badge = unverifiedCount ? ' <span style="color:#8c2d11">⚠ '+unverifiedCount+'</span>' : '';
+  $('counts').textContent = projectSlug(currentProject())+': '+state.counts.records+' records'+(unverifiedCount? ' (内 '+unverifiedCount+' 件未検証)' : '');
+  const rb = $('recordsBadge');
+  if (rb) rb.innerHTML = unverifiedCount ? ' <span style="background:#fde68a;color:#7a4a02;border-radius:999px;padding:1px 7px;font-size:11px;margin-left:4px">⚠'+unverifiedCount+'</span>' : '';
+  updateBulkCount();
+  render();
+}
+function persist(){
+  saveProjectState(currentProject(), { records: state.records });
+  reloadFromStorage();
+}
+
+// =============================================================================
+// Render
+// =============================================================================
+function links(q){
+  const e = encodeURIComponent(q);
+  const g = encodeURIComponent(q+' site:researchmap.jp OR site:researchgate.net OR site:academia.edu');
+  $('sourceLinks').innerHTML = ''
+    + '<a target="_blank" href="https://cir.nii.ac.jp/all?q='+e+'">CiNii</a>'
+    + '<a target="_blank" href="https://ndlsearch.ndl.go.jp/search?cs=bib&keyword='+e+'">NDL</a>'
+    + '<a target="_blank" href="https://www.jstage.jst.go.jp/result/global/-char/ja?globalSearchKey='+e+'">J-STAGE</a>'
+    + '<a target="_blank" href="https://scholar.google.com/scholar?q='+e+'">Scholar</a>'
+    + '<a target="_blank" href="https://www.researchgate.net/search/publications?q='+e+'">ResearchGate</a>'
+    + '<a target="_blank" href="https://www.academia.edu/search?q='+e+'">Academia.edu</a>'
+    + '<a target="_blank" href="https://researchmap.jp/researchers?q='+e+'">researchmap</a>'
+    + '<a target="_blank" href="https://www.google.com/search?q='+g+'">3サイト横断</a>';
+}
+function inputField(name, value, wide=false){
+  return '<label '+(wide?'class="wide"':'')+'>'+name+'<input data-field="'+name+'" value="'+String(value||'').replace(/"/g,'&quot;')+'"></label>';
+}
+function card(r, i, kind){
+  const pdf = r.pdf_url ? '<a target="_blank" href="'+r.pdf_url+'">PDF</a>' : '';
+  const land = r.url ? '<a target="_blank" href="'+r.url+'">書誌ページ</a>' : '';
+  const isResult = kind === 'results';
+  const isUnverified = !!r.unverified;
+  let actionBtns = '';
+  const refBtn = r.doi ? '<button onclick="extractReferences('+i+',\''+kind+'\')">参考文献を取り込む</button>' : '';
+  if (isResult){
+    actionBtns = '<button class="primary" onclick="addRecord('+i+')">本体へ追加</button>'
+      + refBtn;
+  } else { // records
+    const verifyBtn = isUnverified ? '<button class="primary" onclick="markVerified('+i+')">確認済みにする</button>' : '<button onclick="markUnverified('+i+')">未検証に戻す</button>';
+    actionBtns = '<button onclick="saveRecord('+i+')">保存</button>'
+      + verifyBtn
+      + '<button class="warn" onclick="removeRecord('+i+')">削除</button>'
+      + refBtn;
+  }
+  const unverifiedPill = isUnverified ? '<span class="pill unverified-pill">⚠ 未検証</span>' : '';
+  const extractedBadge = r.extracted ? '<span class="pill" style="background:#fef9e8;color:#996515">参考文献由来</span>' : '';
+  const parentBadge = r.parent_doi ? '<span class="pill" style="background:#eef2f7;color:#475569" title="親論文DOI: '+r.parent_doi+'">親: '+r.parent_doi.slice(0,28)+(r.parent_doi.length>28?'…':'')+'</span>' : '';
+  let refsExtractedBadge = '';
+  if (r.refs_extracted === true){
+    refsExtractedBadge = '<span class="pill" style="background:#e8f2f3;color:#004e56" title="このレコードからは既に参考文献を抽出済">孫引済</span>';
+  } else if (typeof r.refs_extracted === 'string'){
+    refsExtractedBadge = '<span class="pill" style="background:#fbe5dd;color:#8c2d11" title="抽出時の状態: '+r.refs_extracted+'">孫引失敗</span>';
+  }
+  const header = unverifiedPill + '<span class="pill">'+(r.type||'')+'</span><span class="pill">'+(r.year||'n.d.')+'</span>' + extractedBadge + parentBadge + refsExtractedBadge;
+  const titleText = r.title || '(タイトル未抽出)';
+  const fields = ['id','type','author','year','title','container','publisher','pages','doi','isbn','issn','url','pdf_url','source_checked'];
+  const wideFields = ['title','url','pdf_url','source_checked'];
+  const altLine = r.alt_title
+    ? '<div class="small" style="font-style:italic;color:#996515">alt: '+r.alt_title+' <button style="font-size:11px;padding:2px 6px" onclick="swapTitle('+i+',\''+kind+'\')">この別言語タイトルに置き換える</button></div>'
+    : '';
+  const unverifiedBanner = isUnverified
+    ? '<div class="unverified-banner"><strong>⚠ 未検証 — 編集して確認済みにするか、削除してください</strong>'
+      + (r.verification_failed_reason ? '<br>失敗理由: '+r.verification_failed_reason : '')
+      + (r.derived_citation_as_found ? '<br>原文: '+String(r.derived_citation_as_found).slice(0,200)+(String(r.derived_citation_as_found).length>200?'…':'') : '')
+      + (r.derived_from ? '<br>親論文: '+r.derived_from : '')
+      + '</div>'
+    : '';
+  const cardClass = isUnverified ? 'item unverified-item' : 'item';
+  return '<div class="'+cardClass+'" data-orig-idx="'+i+'" data-kind="'+kind+'">'
+    + '<div>'+header+'</div>'
+    + '<div class="title">'+titleText+'</div>'
+    + altLine
+    + unverifiedBanner
+    + '<div class="small">'+(r.author||'')+'</div><div class="small">'+(r.container||r.publisher||'')+'</div>'
+    + '<div class="small links">'+pdf+land+'</div>'
+    + '<div class="edit">'+fields.map(f => inputField(f, r[f], wideFields.includes(f))).join('')+'</div>'
+    + '<div class="actions">'+actionBtns+'</div>'
+    + '</div>';
+}
+function readCard(i, arr){
+  // Use data-orig-idx so display ordering/filtering doesn't break indexing
+  const node = document.querySelector('.item[data-orig-idx="'+i+'"]') || document.querySelectorAll('.item')[i];
+  const r = Object.assign({}, arr[i]);
+  if (node){
+    node.querySelectorAll('[data-field]').forEach(el => r[el.dataset.field] = el.value);
+  }
+  return r;
+}
+function render(){
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
+  const ctrl = $('recordsControls');
+  if (ctrl) ctrl.style.display = (tab === 'records') ? '' : 'none';
+
+  if (tab === 'records'){
+    const all = state.records;
+    const u = all.filter(r => r.unverified).length;
+    $('viewTitle').textContent = '本体CSV ('+all.length+(u? ' / 内 '+u+' 件未検証':'')+')';
+    if (!all.length){
+      $('content').innerHTML = '<div class="empty">本体CSVがまだ空です。CSVをアップロードするか、検索候補から追加してください。</div>';
+      return;
+    }
+    // Build display list with original indices preserved
+    const filterEl = $('filterUnverified');
+    const filterUnv = filterEl ? filterEl.checked : false;
+    let items = all.map((r, i) => ({r, i}));
+    // Sort: unverified first
+    items.sort((a, b) => (b.r.unverified?1:0) - (a.r.unverified?1:0));
+    if (filterUnv) items = items.filter(x => x.r.unverified);
+    if (!items.length){
+      $('content').innerHTML = '<div class="empty">該当する項目がありません（未検証フィルタ ON）。</div>';
+      return;
+    }
+    $('content').innerHTML = '<div class="grid">'+items.map(x => card(x.r, x.i, 'records')).join('')+'</div>';
+  } else {
+    const arr = state.results;
+    $('viewTitle').textContent = '検索候補 ('+arr.length+')';
+    if (!arr.length){
+      $('content').innerHTML = '<div class="empty">まだ検索結果がありません。検索条件を入力して「検索」を押してください。</div>';
+      return;
+    }
+    $('content').innerHTML = '<div class="grid">'+arr.map((r,i) => card(r, i, 'results')).join('')+'</div>';
+  }
+}
+
+// =============================================================================
+// Actions
+// =============================================================================
+async function search(){
+  const q = $('query').value.trim();
+  links(q);
+  setStatus('検索中... 通常は数秒、最大15秒で戻ります。');
+  $('searchBtn').disabled = true;
+  try {
+    state.results = await searchAll(q, Number($('rows').value||10));
+    setStatus('候補 '+state.results.length+' 件。確認後、個別追加または「候補を全件本体へ追加」でCSVに反映します。');
+    tab = 'results';
+    render();
+  } catch (e) {
+    setStatus('検索失敗: '+e.message);
+  } finally {
+    $('searchBtn').disabled = false;
+  }
+}
+function addRecord(i){
+  const rec = readCard(i, state.results);
+  state.records = uniqueRecords([...state.records, rec]);
+  persist();
+  setStatus('本体CSV側へ追加しました（localStorage）。');
+}
+function addAllRecords(){
+  if (!state.results.length){ setStatus('追加する検索候補がありません。'); return; }
+  state.records = uniqueRecords([...state.records, ...state.results]);
+  persist();
+  setStatus('検索候補 '+state.results.length+' 件を本体CSV側へ追加しました。');
+}
+function addAsUnverified(i){
+  const rec = readCard(i, state.results);
+  rec.unverified = true;
+  rec.verification_failed_reason = rec.verification_failed_reason || '手動で未検証フラグを付与';
+  state.records = uniqueRecords([...state.records, rec]);
+  persist();
+  setStatus('未検証フラグ付きで本体に追加しました。本体タブで黄色く表示されます。');
+}
+function saveRecord(i){
+  const rec = readCard(i, state.records);
+  state.records[i] = rec;
+  persist();
+  setStatus('本体CSVの編集を保存しました。');
+}
+function removeRecord(i){
+  if (!confirm('この本体レコードを削除しますか？')) return;
+  state.records.splice(i,1);
+  persist();
+  setStatus('削除しました。');
+}
+function markVerified(i){
+  const r = state.records[i];
+  if (!r) return;
+  delete r.unverified;
+  delete r.verification_failed_reason;
+  // Recompute id and harvard if missing
+  if (!r.id || r.id.startsWith('unverified_')){
+    r.id = slug((r.author||'unknown')+'_'+(r.year||'')+'_'+(r.title||''));
+  }
+  r.harvard_reference = r.harvard_reference || makeHarvard(r);
+  persist();
+  setStatus('確認済みにしました: '+(r.title||r.id));
+}
+function markUnverified(i){
+  const r = state.records[i];
+  if (!r) return;
+  r.unverified = true;
+  r.verification_failed_reason = r.verification_failed_reason || '手動で未検証フラグを付与';
+  persist();
+  setStatus('未検証フラグを付与しました。');
+}
+function swapTitle(i, kind){
+  // Swap the main title with alt_title (preserves alt as the previous main)
+  const arr = kind==='results' ? state.results : state.records;
+  if (!arr[i] || !arr[i].alt_title) return;
+  const r = arr[i];
+  const prevTitle = r.title;
+  r.title = r.alt_title;
+  r.alt_title = prevTitle;
+  r.id = slug((r.author||'crossref')+'_'+(r.year||'')+'_'+r.title);
+  r.harvard_reference = makeHarvard(r);
+  if (kind === 'results'){
+    render(); // results aren't persisted
+  } else {
+    persist();
+  }
+  setStatus('タイトルを別言語版に入れ替えました。');
+}
+
+// =============================================================================
+// Import/Export
+// =============================================================================
+function downloadFile(filename, content, mime='text/plain'){
+  const blob = new Blob([content], { type: mime+';charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+function verifiedRecords(){ return state.records.filter(r => !r.unverified); }
+function unverifiedRecords(){ return state.records.filter(r => r.unverified); }
+function dlCsv(){
+  const f = projectFiles(currentProject());
+  downloadFile(f.csv, csvRows(verifiedRecords(), CSV_HEADER), 'text/csv');
+}
+function dlBib(){
+  const f = projectFiles(currentProject());
+  downloadFile(f.bib, toBib(verifiedRecords(), ''), 'application/x-bibtex');
+}
+function dlZot(){
+  const f = projectFiles(currentProject());
+  downloadFile(f.zoteroBib, toBib(verifiedRecords(), $('tag').value), 'application/x-bibtex');
+}
+function dlUnverified(){
+  const project = projectSlug(currentProject());
+  const u = unverifiedRecords();
+  if (!u.length){ setStatus('未検証項目はありません。'); return; }
+  downloadFile(project+'_unverified.csv', csvRows(u, UNVERIFIED_CSV_HEADER), 'text/csv');
+}
+function buildPdfList(records, project){
+  const lines = ['# '+project+' — PDF URLs',
+                 '',
+                 '本体レコードのうち pdf_url が登録されているものの一覧。',
+                 ''];
+  const withPdf = records.filter(r => r.pdf_url);
+  if (!withPdf.length){
+    lines.push('_(PDF URLが登録されているレコードはありません)_');
+  } else {
+    withPdf.forEach(r => {
+      const auth = r.author || 'Unknown';
+      const year = r.year || 'n.d.';
+      const title = r.title || 'Untitled';
+      lines.push('- ['+auth+' ('+year+') '+title+']('+r.pdf_url+')');
+    });
+  }
+  return lines.join('\n') + '\n';
+}
+function dlPdfList(){
+  const f = projectFiles(currentProject());
+  const project = projectSlug(currentProject());
+  downloadFile(project+'_pdf_urls.md', buildPdfList(state.records, project), 'text/markdown');
+}
+async function downloadZip(){
+  if (typeof JSZip === 'undefined'){
+    setStatus('JSZipのロードに失敗しました。ネットワーク接続を確認してください。');
+    return;
+  }
+  const verified = verifiedRecords();
+  const unverified = unverifiedRecords();
+  if (unverified.length){
+    if (!confirm(unverified.length+' 件が未検証のままです。\n\nOK = 確認済みのみをCSV/Bibに含め、未検証は別ファイル (unverified.csv) として同梱して続行。\nCancel = 中断して本体タブで編集／削除する。')) return;
+  }
+  const f = projectFiles(currentProject());
+  const project = projectSlug(currentProject());
+  const tag = $('tag').value;
+  const zip = new JSZip();
+  zip.file(f.csv, csvRows(verified, CSV_HEADER));
+  zip.file(f.bib, toBib(verified, ''));
+  zip.file(f.zoteroBib, toBib(verified, tag));
+  zip.file(project+'_pdf_urls.md', buildPdfList(verified, project));
+  if (unverified.length){
+    zip.file(project+'_unverified.csv', csvRows(unverified, UNVERIFIED_CSV_HEADER));
+  }
+  const manifest = [
+    '# '+project+' literature export',
+    '',
+    '生成日時: '+new Date().toISOString(),
+    '確認済レコード: '+verified.length+' 件',
+    '未検証レコード: '+unverified.length+' 件',
+    '',
+    '## ファイル一覧',
+    '',
+    '- `'+f.csv+'` — 本体レコードCSV（確認済のみ）',
+    '- `'+f.bib+'` — BibTeX（確認済のみ、タグなし）',
+    '- `'+f.zoteroBib+'` — BibTeX（確認済のみ、Zotero用 keywords='+tag+' 付き）',
+    '- `'+project+'_pdf_urls.md` — PDF URLリスト（確認済のみ）',
+    unverified.length ? '- `'+project+'_unverified.csv` — 未検証項目（編集して `unverified` 列をクリアすれば本体に戻せる）' : '',
+    '',
+    unverified.length ? '## 未検証項目について\n\n未検証 '+unverified.length+' 件は別CSVに分離してあります。'
+      + 'これらは Crossref の DOI lookup あるいは title 検索で確実な一致が取れなかった、孫引き由来の候補です。'
+      + '手動で確認したら `unverified` 列を空にして本体CSVに統合してください。' : '',
+  ].filter(Boolean).join('\n');
+  zip.file('README.md', manifest);
+  setStatus('ZIPを生成中...');
+  try {
+    const blob = await zip.generateAsync({type:'blob', compression:'DEFLATE'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = project+'_literature_export_'+new Date().toISOString().slice(0,10)+'.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 500);
+    setStatus('ZIPダウンロード完了: '+a.download+'\n(確認済 '+verified.length+', 未検証 '+unverified.length+')');
+  } catch (e){
+    setStatus('ZIP生成失敗: '+e.message);
+  }
+}
+async function sendToZotero(){
+  const verified = verifiedRecords();
+  if (!verified.length){
+    setStatus('送信する確認済レコードがありません（未検証のみは送信できません）。');
+    return;
+  }
+  const unverified = unverifiedRecords();
+  if (unverified.length && !confirm(unverified.length+' 件が未検証のままです。確認済 '+verified.length+' 件だけをZoteroに送信しますか？')) return;
+  const tag = $('tag').value;
+  const bib = toBib(verified, tag);
+  const session = 'litpipe-'+Date.now();
+  setStatus('Zotero送信中... Zotero Desktopが http://127.0.0.1:23119 で起動している必要があります。');
+  try {
+    const r = await fetch('http://127.0.0.1:23119/connector/import?session='+encodeURIComponent(session), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-bibtex'},
+      body: bib,
+    });
+    const text = await r.text();
+    if (r.ok){
+      setStatus('Zotero送信成功（HTTP '+r.status+'）\nレコード '+state.records.length+' 件をタグ「'+tag+'」付きで取り込みました。\n'+text.slice(0,300));
+    } else {
+      setStatus('Zoteroが応答しましたが、エラーを返しました（HTTP '+r.status+'）\n'+text.slice(0,500));
+    }
+  } catch (e){
+    setStatus('Zotero送信失敗: '+e.message+'\n\n'
+      + 'チェックリスト:\n'
+      + ' 1. Zotero Desktop は起動していますか？\n'
+      + ' 2. ブラウザがHTTPS→localhost通信を許可していますか？（Safariは厳しめ。Chrome/Firefox/Edge推奨）\n'
+      + ' 3. file:// で開いている場合はそのまま動くはずです。');
+  }
+}
+function importCsv(file){
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const parsed = parseCSV(e.target.result);
+      if (!confirm('このプロジェクトの本体レコード（現在 '+state.records.length+' 件）を、アップロードした '+parsed.length+' 件で置き換えますか？')) return;
+      // Normalize the "unverified" field if present (string from CSV → boolean)
+      for (const r of parsed){
+        if (typeof r.unverified === 'string'){
+          r.unverified = (r.unverified.toLowerCase() === 'true' || r.unverified === '1');
+        }
+      }
+      state.records = parsed;
+      persist();
+      setStatus('CSV を '+parsed.length+' 件読み込みました（内 '+parsed.filter(r=>r.unverified).length+' 件は未検証マーク付き）。');
+    } catch (err){
+      setStatus('CSV 読み込み失敗: '+err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+function clearProject(){
+  if (!confirm('プロジェクト「'+projectSlug(currentProject())+'」の localStorage を削除します。ダウンロードしていない作業データは失われます。よろしいですか？')) return;
+  localStorage.removeItem(stateKey(currentProject()));
+  setStatus('プロジェクトのlocalStorageを削除しました。');
+  reloadFromStorage();
+}
+
+// =============================================================================
+// Init
+// =============================================================================
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
+$('searchBtn').onclick = search;
+$('refreshBtn').onclick = reloadFromStorage;
+$('addAllBtn').onclick = addAllRecords;
+$('bulkExtractBtn').onclick = bulkExtractReferences;
+$('resetExtractedBtn').onclick = resetExtractedFlags;
+$('bulkSkipProcessed').onchange = updateBulkCount;
+$('filterUnverified').onchange = render;
+$('zipBtn').onclick = downloadZip;
+$('zoteroBtn').onclick = sendToZotero;
+$('dlCsvBtn').onclick = dlCsv;
+$('dlBibBtn').onclick = dlBib;
+$('dlZotBtn').onclick = dlZot;
+$('dlPdfBtn').onclick = dlPdfList;
+$('dlUnvBtn').onclick = dlUnverified;
+$('importCsv').onchange = e => { if (e.target.files[0]) importCsv(e.target.files[0]); e.target.value=''; };
+$('clearProjectBtn').onclick = clearProject;
+$('query').oninput = () => links($('query').value);
+$('project').oninput = syncProjectPreview;
+$('project').onchange = reloadFromStorage;
+
+links($('query').value);
+syncProjectPreview();
+reloadFromStorage();
+
+// Expose for inline onclick
+window.addRecord = addRecord;
+window.addAsUnverified = addAsUnverified;
+window.saveRecord = saveRecord;
+window.removeRecord = removeRecord;
+window.markVerified = markVerified;
+window.markUnverified = markUnverified;
+window.swapTitle = swapTitle;
+window.extractReferences = extractReferences;
+</script>
+</body>
+</html>
