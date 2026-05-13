@@ -78,6 +78,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
   <div class="actions">
     <button class="primary" id="searchBtn">検索（孫引き拡張）</button>
     <button id="refreshBtn">再読込</button>
+    <button class="warn" id="clearAllBtn">全削除</button>
   </div>
   <div class="small" style="margin-top:6px">Crossref + OpenAlex + CiNii Research を並列検索 → ヒットを本体に追加 → 各ヒットの参考文献も <strong>PDF / Crossref</strong> から自動取得・再検証。所要時間は親の数 × 平均30件で1〜2分目安。</div>
 
@@ -1381,6 +1382,17 @@ function importCsv(file){
   };
   reader.readAsText(file);
 }
+function clearAllRecords(){
+  if (!state.records.length){
+    setStatus('本体レコードは既に空です。');
+    return;
+  }
+  if (!confirm('本体レコード '+state.records.length+' 件をすべて削除します。よろしいですか？\n（ダウンロード済みCSVは消えません。元に戻すには「詳細」→「本体CSVを取り込み」で復元できます）')) return;
+  state.records = [];
+  saveProjectState(currentProject(), { records: [] });
+  reloadFromStorage();
+  setStatus('全レコードを削除しました。');
+}
 function clearProject(){
   if (!confirm('プロジェクト「'+projectSlug(currentProject())+'」の localStorage を削除します。ダウンロードしていない作業データは失われます。よろしいですか？')) return;
   localStorage.removeItem(stateKey(currentProject()));
@@ -1393,6 +1405,7 @@ function clearProject(){
 // =============================================================================
 $('searchBtn').onclick = search;
 $('refreshBtn').onclick = reloadFromStorage;
+$('clearAllBtn').onclick = clearAllRecords;
 $('bulkExtractBtn').onclick = bulkExtractReferences;
 $('resetExtractedBtn').onclick = resetExtractedFlags;
 $('bulkSkipProcessed').onchange = updateBulkCount;
