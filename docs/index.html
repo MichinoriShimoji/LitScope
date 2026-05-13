@@ -59,7 +59,6 @@ button:disabled{opacity:.55;cursor:not-allowed}
 </header>
 <main>
 <aside>
-  <div class="section-title" style="background:#e8f2f3;color:#004e56;padding:6px 10px;border-radius:6px;margin-bottom:8px">Stage 1 — キーワード検索</div>
   <label>検索条件</label>
   <textarea id="query">Irabu Ryukyuan</textarea>
   <div class="row">
@@ -70,31 +69,21 @@ button:disabled{opacity:.55;cursor:not-allowed}
     <div><label>件数</label><input id="rows" type="number" value="10" min="1" max="50"></div>
     <div><label>保存名</label><input id="projectPreview" value="irabu_dialect_literature" readonly></div>
   </div>
-  <div class="actions">
-    <button class="primary" id="searchBtn">検索</button>
-    <button id="refreshBtn">再読込</button>
-    <button id="addAllBtn">候補を全件本体へ追加</button>
+  <div style="margin:8px 0">
+    <label style="display:inline-block;margin:0 12px 0 0;color:var(--ink)"><input id="autoExtract" type="checkbox" style="width:auto" checked> 検索結果から孫引きも自動抽出</label>
   </div>
+  <div class="actions">
+    <button class="primary" id="searchBtn">検索（孫引き拡張）</button>
+    <button id="refreshBtn">再読込</button>
+  </div>
+  <div class="small" style="margin-top:6px">検索ヒットを本体に追加し、それぞれの参考文献も <strong>PDF / Crossref</strong> から自動取得・再検証します。所要時間は親の数 × 平均30件で1〜2分目安。</div>
 
   <label>確認用リンク</label>
   <div class="links small" id="sourceLinks"></div>
 
   <div class="divider"></div>
 
-  <div class="section-title" style="background:#fff8f4;color:#996515;padding:6px 10px;border-radius:6px;margin-bottom:8px">Stage 2 — 孫引き一括抽出</div>
-  <div class="small" style="margin-bottom:6px">本体内の <strong>PDF URL もしくは DOI</strong> 付きレコードを親論文として、参考文献を抽出します。<strong>PDFが読めれば PDF を優先</strong>、ダメなら Crossref メタデータにフォールバック。未検証のものは黄色く表示されます。</div>
-  <div class="small" id="bulkInfo">対象: <span id="bulkCount">0</span>件 / 本体内 PDF/DOI 付き<span id="bulkTotalCount">0</span>件</div>
-  <div style="margin:8px 0">
-    <label style="display:inline-block;margin:0 12px 0 0;color:var(--ink)"><input id="bulkSkipProcessed" type="checkbox" style="width:auto" checked> 処理済の親をスキップ</label>
-  </div>
-  <div class="actions">
-    <button class="primary" id="bulkExtractBtn">本体の全レコードから参考文献を一括抽出</button>
-    <button id="resetExtractedBtn">処理済フラグをリセット</button>
-  </div>
-
-  <div class="divider"></div>
-
-  <div class="section-title" style="background:#f5f9fd;color:#1d4d80;padding:6px 10px;border-radius:6px;margin-bottom:8px">Stage 3 — 確認・ダウンロード</div>
+  <div class="section-title" style="background:#f5f9fd;color:#1d4d80;padding:6px 10px;border-radius:6px;margin-bottom:8px">出力</div>
   <div class="actions">
     <button class="primary" id="zipBtn">ZIPでまとめてダウンロード</button>
     <button id="zoteroBtn">Zoteroへ直接送信</button>
@@ -105,7 +94,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
   </div>
 
   <details style="margin-top:14px">
-    <summary class="small" style="cursor:pointer">個別ダウンロード／既存CSVを取り込む／localStorageをクリア</summary>
+    <summary class="small" style="cursor:pointer">詳細：個別ダウンロード／再抽出／インポート／クリア</summary>
     <div class="section-title" style="margin-top:8px">個別ダウンロード（確認済のみ）</div>
     <div class="actions">
       <button id="dlCsvBtn">CSV</button>
@@ -114,12 +103,22 @@ button:disabled{opacity:.55;cursor:not-allowed}
       <button id="dlPdfBtn">PDFリスト</button>
       <button id="dlUnvBtn">未検証CSV</button>
     </div>
+    <div class="section-title">孫引き再実行</div>
+    <div class="small" style="margin-bottom:6px">本体内の未処理 PDF/DOI から再度抽出します。検索しなおさず追加抽出だけしたいとき用。</div>
+    <div style="margin:8px 0">
+      <label style="display:inline-block;margin:0 12px 0 0;color:var(--ink)"><input id="bulkSkipProcessed" type="checkbox" style="width:auto" checked> 処理済の親をスキップ</label>
+    </div>
+    <div class="small">対象: <span id="bulkCount">0</span>件 / 本体内 PDF/DOI 付き<span id="bulkTotalCount">0</span>件</div>
+    <div class="actions">
+      <button id="bulkExtractBtn">孫引き再実行</button>
+      <button id="resetExtractedBtn">処理済フラグをリセット</button>
+    </div>
     <div class="section-title">既存CSVを取り込む</div>
     <div class="actions">
       <label class="fileLabel" for="importCsv">本体CSV</label>
       <input class="fileInput" type="file" id="importCsv" accept=".csv,text/csv">
     </div>
-    <div class="small" style="margin-top:6px">アップロードすると現在の作業データを上書きします。<code>unverified</code> 列があれば未検証マークとして読み込みます。</div>
+    <div class="small" style="margin-top:6px">アップロードすると現在の作業データを上書きします。</div>
     <div class="section-title">localStorage</div>
     <div class="actions">
       <button class="warn" id="clearProjectBtn">このプロジェクトをクリア</button>
@@ -129,15 +128,14 @@ button:disabled{opacity:.55;cursor:not-allowed}
   <div class="status" id="status"></div>
 </aside>
 <section>
-  <div class="tabs">
-    <button class="tab active" data-tab="results">検索候補</button>
-    <button class="tab" data-tab="records">本体CSV<span id="recordsBadge"></span></button>
-  </div>
-  <div class="toolbar">
-    <strong id="viewTitle">検索候補</strong>
-    <div class="small" id="recordsControls" style="display:none">
-      <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+  <div class="toolbar" style="margin-top:4px">
+    <strong id="viewTitle">本体CSV<span id="recordsBadge"></span></strong>
+    <div class="small">
+      <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin-right:12px">
         <input id="filterUnverified" type="checkbox" style="width:auto"> 未検証のみ表示
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+        <input id="filterSearchHits" type="checkbox" style="width:auto"> 検索ヒットのみ
       </label>
     </div>
   </div>
@@ -745,8 +743,8 @@ function syncProjectPreview(){
 // =============================================================================
 // UI state
 // =============================================================================
-let state = { records: [], derivatives: [], results: [], counts: {} };
-let tab = 'results';
+let state = { records: [], derivatives: [], counts: {} };
+let tab = 'records';
 const $ = id => document.getElementById(id);
 function setStatus(s){ $('status').textContent = s; }
 function reloadFromStorage(){
@@ -816,18 +814,13 @@ function inputField(name, value, wide=false){
 function card(r, i, kind){
   const pdf = r.pdf_url ? '<a target="_blank" href="'+r.pdf_url+'">PDF</a>' : '';
   const land = r.url ? '<a target="_blank" href="'+r.url+'">書誌ページ</a>' : '';
-  const isResult = kind === 'results';
   const isUnverified = !!r.unverified;
-  let actionBtns = '';
-  if (isResult){
-    actionBtns = '<button class="primary" onclick="addRecord('+i+')">本体へ追加</button>';
-  } else { // records
-    const verifyBtn = isUnverified ? '<button class="primary" onclick="markVerified('+i+')">確認済みにする</button>' : '<button onclick="markUnverified('+i+')">未検証に戻す</button>';
-    actionBtns = '<button onclick="saveRecord('+i+')">保存</button>'
-      + verifyBtn
-      + '<button class="warn" onclick="removeRecord('+i+')">削除</button>';
-  }
+  const verifyBtn = isUnverified ? '<button class="primary" onclick="markVerified('+i+')">確認済みにする</button>' : '<button onclick="markUnverified('+i+')">未検証に戻す</button>';
+  const actionBtns = '<button onclick="saveRecord('+i+')">保存</button>'
+    + verifyBtn
+    + '<button class="warn" onclick="removeRecord('+i+')">削除</button>';
   const unverifiedPill = isUnverified ? '<span class="pill unverified-pill">⚠ 未検証</span>' : '';
+  const searchHitBadge = r.search_hit ? '<span class="pill" style="background:#e8f2f3;color:#004e56" title="このレコードは検索ヒット由来">🔍 検索ヒット</span>' : '';
   const extractedBadge = r.extracted ? '<span class="pill" style="background:#fef9e8;color:#996515">参考文献由来</span>' : '';
   const parentBadge = r.parent_doi ? '<span class="pill" style="background:#eef2f7;color:#475569" title="親論文DOI: '+r.parent_doi+'">親: '+r.parent_doi.slice(0,28)+(r.parent_doi.length>28?'…':'')+'</span>' : '';
   let refsExtractedBadge = '';
@@ -840,7 +833,7 @@ function card(r, i, kind){
   } else if (typeof r.refs_extracted === 'string'){
     refsExtractedBadge = '<span class="pill" style="background:#fbe5dd;color:#8c2d11" title="抽出時の状態: '+r.refs_extracted+'">孫引失敗</span>';
   }
-  const header = unverifiedPill + '<span class="pill">'+(r.type||'')+'</span><span class="pill">'+(r.year||'n.d.')+'</span>' + extractedBadge + parentBadge + refsExtractedBadge;
+  const header = unverifiedPill + searchHitBadge + '<span class="pill">'+(r.type||'')+'</span><span class="pill">'+(r.year||'n.d.')+'</span>' + extractedBadge + parentBadge + refsExtractedBadge;
   const titleText = r.title || '(タイトル未抽出)';
   const fields = ['id','type','author','year','title','container','publisher','pages','doi','isbn','issn','url','pdf_url','source_checked'];
   const wideFields = ['title','url','pdf_url','source_checked'];
@@ -876,39 +869,30 @@ function readCard(i, arr){
   return r;
 }
 function render(){
-  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
-  const ctrl = $('recordsControls');
-  if (ctrl) ctrl.style.display = (tab === 'records') ? '' : 'none';
-
-  if (tab === 'records'){
-    const all = state.records;
-    const u = all.filter(r => r.unverified).length;
-    $('viewTitle').textContent = '本体CSV ('+all.length+(u? ' / 内 '+u+' 件未検証':'')+')';
-    if (!all.length){
-      $('content').innerHTML = '<div class="empty">本体CSVがまだ空です。CSVをアップロードするか、検索候補から追加してください。</div>';
-      return;
-    }
-    // Build display list with original indices preserved
-    const filterEl = $('filterUnverified');
-    const filterUnv = filterEl ? filterEl.checked : false;
-    let items = all.map((r, i) => ({r, i}));
-    // Sort: unverified first
-    items.sort((a, b) => (b.r.unverified?1:0) - (a.r.unverified?1:0));
-    if (filterUnv) items = items.filter(x => x.r.unverified);
-    if (!items.length){
-      $('content').innerHTML = '<div class="empty">該当する項目がありません（未検証フィルタ ON）。</div>';
-      return;
-    }
-    $('content').innerHTML = '<div class="grid">'+items.map(x => card(x.r, x.i, 'records')).join('')+'</div>';
-  } else {
-    const arr = state.results;
-    $('viewTitle').textContent = '検索候補 ('+arr.length+')';
-    if (!arr.length){
-      $('content').innerHTML = '<div class="empty">まだ検索結果がありません。検索条件を入力して「検索」を押してください。</div>';
-      return;
-    }
-    $('content').innerHTML = '<div class="grid">'+arr.map((r,i) => card(r, i, 'results')).join('')+'</div>';
+  const all = state.records;
+  const u = all.filter(r => r.unverified).length;
+  const h = all.filter(r => r.search_hit).length;
+  const view = $('viewTitle');
+  if (view){
+    const badge = u ? ' <span style="background:#fde68a;color:#7a4a02;border-radius:999px;padding:1px 7px;font-size:11px">⚠'+u+'</span>' : '';
+    view.innerHTML = '本体CSV ('+all.length+' 件'+(h ? ' / 検索ヒット '+h : '')+(u ? ' / 未検証 '+u : '')+')'+badge;
   }
+  if (!all.length){
+    $('content').innerHTML = '<div class="empty">まだレコードがありません。検索条件を入力して「検索」を押してください。</div>';
+    return;
+  }
+  const filterUnv = ($('filterUnverified')||{}).checked;
+  const filterHits = ($('filterSearchHits')||{}).checked;
+  let items = all.map((r, i) => ({r, i}));
+  // Sort: unverified first
+  items.sort((a, b) => (b.r.unverified?1:0) - (a.r.unverified?1:0));
+  if (filterUnv) items = items.filter(x => x.r.unverified);
+  if (filterHits) items = items.filter(x => x.r.search_hit);
+  if (!items.length){
+    $('content').innerHTML = '<div class="empty">該当する項目がありません（フィルタ ON）。</div>';
+    return;
+  }
+  $('content').innerHTML = '<div class="grid">'+items.map(x => card(x.r, x.i, 'records')).join('')+'</div>';
 }
 
 // =============================================================================
@@ -916,39 +900,76 @@ function render(){
 // =============================================================================
 async function search(){
   const q = $('query').value.trim();
+  if (!q){ alert('検索条件を入力してください。'); return; }
   links(q);
-  setStatus('検索中... 通常は数秒、最大15秒で戻ります。');
   $('searchBtn').disabled = true;
   try {
-    state.results = await searchAll(q, Number($('rows').value||10));
-    setStatus('候補 '+state.results.length+' 件。確認後、個別追加または「候補を全件本体へ追加」でCSVに反映します。');
-    tab = 'results';
+    // Phase 1: keyword search
+    setStatus('検索中: 「'+q+'」 (Crossref + OpenAlex)...');
+    const rows = Number($('rows').value||10);
+    const initial = await searchAll(q, rows);
+    if (!initial.length){
+      setStatus('検索結果なし: 「'+q+'」');
+      return;
+    }
+    // Mark and add direct hits to records
+    for (const r of initial){
+      r.search_hit = true;
+      r.search_query = q;
+    }
+    const prevCount = state.records.length;
+    state.records = uniqueRecords([...state.records, ...initial]);
+    const addedHits = state.records.length - prevCount;
+    persist();
+    const autoEl = $('autoExtract');
+    const doExtract = autoEl ? autoEl.checked : true;
+    if (!doExtract){
+      setStatus('検索完了: ヒット '+initial.length+' 件 (新規 '+addedHits+' 件) を本体に追加。孫引きはOFF。');
+      return;
+    }
+    // Phase 2: extended secondary citation extraction from each hit
+    const parents = state.records.filter(r => r.search_query === q && !r.refs_extracted && (r.doi || r.pdf_url));
+    if (!parents.length){
+      setStatus('検索完了: ヒット '+initial.length+' 件。孫引き対象なし（DOI/PDF URLなし or すべて処理済）。');
+      return;
+    }
+    setStatus('検索完了: ヒット '+initial.length+' 件。孫引き拡張を '+parents.length+' 件の親に対して実行...');
+    let totalVerified = 0, totalUnverified = 0, totalRefs = 0, viaPdf = 0, viaCrossref = 0, viaNone = 0;
+    for (let n = 0; n < parents.length; n++){
+      const parent = parents[n];
+      const parentLabel = parent.doi || parent.pdf_url || parent.title || '(no id)';
+      window._bulkProgressCb = (k, total, src) => setStatus(
+        '孫引き拡張 ['+(src||'?')+'] — 親 '+(n+1)+'/'+parents.length+' ('+String(parentLabel).slice(0,40)+') — 参考文献 '+k+'/'+total+' 検証中... (累計: 確認済 '+totalVerified+' / 未検証 '+totalUnverified+')'
+      );
+      setStatus('孫引き拡張 — 親 '+(n+1)+'/'+parents.length+' ('+String(parentLabel).slice(0,60)+') を処理中...');
+      const { verified, unverified, refsFetched, source } = await extractRefsForParent(parent);
+      totalVerified += verified;
+      totalUnverified += unverified;
+      totalRefs += refsFetched;
+      if (source === 'pdf') viaPdf++;
+      else if (source === 'crossref') viaCrossref++;
+      else viaNone++;
+    }
+    window._bulkProgressCb = null;
+    state.records = uniqueRecords(state.records);
+    persist();
+    if (totalUnverified > 0){
+      const f = $('filterUnverified'); if (f) f.checked = true;
+    }
     render();
+    setStatus(
+      '完了:\n'
+      +'  検索ヒット '+initial.length+' 件 (新規 '+addedHits+' 件)\n'
+      +'  孫引き拡張 '+parents.length+' 親 (PDF '+viaPdf+' / Crossref '+viaCrossref+' / 取得不可 '+viaNone+')\n'
+      +'  参考文献 '+totalRefs+' 件処理 → 確認済 '+totalVerified+' / 未検証 '+totalUnverified
+      +(totalUnverified ? '\n\n本体タブで「未検証のみ表示」をONにしました。黄色いカードを編集／削除してから ZIP に進んでください。' : '')
+    );
   } catch (e) {
     setStatus('検索失敗: '+e.message);
+    console.error('search error:', e);
   } finally {
     $('searchBtn').disabled = false;
   }
-}
-function addRecord(i){
-  const rec = readCard(i, state.results);
-  state.records = uniqueRecords([...state.records, rec]);
-  persist();
-  setStatus('本体CSV側へ追加しました（localStorage）。');
-}
-function addAllRecords(){
-  if (!state.results.length){ setStatus('追加する検索候補がありません。'); return; }
-  state.records = uniqueRecords([...state.records, ...state.results]);
-  persist();
-  setStatus('検索候補 '+state.results.length+' 件を本体CSV側へ追加しました。');
-}
-function addAsUnverified(i){
-  const rec = readCard(i, state.results);
-  rec.unverified = true;
-  rec.verification_failed_reason = rec.verification_failed_reason || '手動で未検証フラグを付与';
-  state.records = uniqueRecords([...state.records, rec]);
-  persist();
-  setStatus('未検証フラグ付きで本体に追加しました。本体タブで黄色く表示されます。');
 }
 function saveRecord(i){
   const rec = readCard(i, state.records);
@@ -985,7 +1006,7 @@ function markUnverified(i){
 }
 function swapTitle(i, kind){
   // Swap the main title with alt_title (preserves alt as the previous main)
-  const arr = kind==='results' ? state.results : state.records;
+  const arr = state.records;
   if (!arr[i] || !arr[i].alt_title) return;
   const r = arr[i];
   const prevTitle = r.title;
@@ -993,11 +1014,7 @@ function swapTitle(i, kind){
   r.alt_title = prevTitle;
   r.id = slug((r.author||'crossref')+'_'+(r.year||'')+'_'+r.title);
   r.harvard_reference = makeHarvard(r);
-  if (kind === 'results'){
-    render(); // results aren't persisted
-  } else {
-    persist();
-  }
+  persist();
   setStatus('タイトルを別言語版に入れ替えました。');
 }
 
@@ -1173,14 +1190,13 @@ function clearProject(){
 // =============================================================================
 // Init
 // =============================================================================
-document.querySelectorAll('.tab').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
 $('searchBtn').onclick = search;
 $('refreshBtn').onclick = reloadFromStorage;
-$('addAllBtn').onclick = addAllRecords;
 $('bulkExtractBtn').onclick = bulkExtractReferences;
 $('resetExtractedBtn').onclick = resetExtractedFlags;
 $('bulkSkipProcessed').onchange = updateBulkCount;
 $('filterUnverified').onchange = render;
+$('filterSearchHits').onchange = render;
 $('zipBtn').onclick = downloadZip;
 $('zoteroBtn').onclick = sendToZotero;
 $('dlCsvBtn').onclick = dlCsv;
@@ -1199,8 +1215,6 @@ syncProjectPreview();
 reloadFromStorage();
 
 // Expose for inline onclick
-window.addRecord = addRecord;
-window.addAsUnverified = addAsUnverified;
 window.saveRecord = saveRecord;
 window.removeRecord = removeRecord;
 window.markVerified = markVerified;
