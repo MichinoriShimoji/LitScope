@@ -376,8 +376,12 @@ async function enrichCiniiUrl(record){
         if (!t) continue;
         const v = (typeof t === 'string') ? t : (t['@value'] || '');
         if (!v) continue;
-        const l = (t['@language'] || '').toLowerCase().slice(0,2);
-        if (!byLang[l]) byLang[l] = v;
+        const lFull = (t['@language'] || '').toLowerCase();
+        // Skip transliteration / phonetic-reading entries (e.g. ja-Kana, ja-Hrkt,
+        // ja-Latn). These are yomi/romaji, not real titles. Anything with a script
+        // subtag — i.e. containing "-" — is excluded.
+        if (lFull.indexOf('-') !== -1) continue;
+        if (!byLang[lFull]) byLang[lFull] = v;
       }
       // Preference: original language → English → Japanese → any
       let picked = '';
