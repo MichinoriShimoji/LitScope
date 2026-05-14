@@ -49,6 +49,8 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .unverified-banner{background:#fef0c7;color:#8c2d11;padding:8px 10px;border-radius:6px;font-size:12px;line-height:1.45}
 .unverified-banner strong{color:#7a4a02}
 .pill.unverified-pill{background:#fde68a;color:#7a4a02;border-color:#f59e0b;font-weight:700}
+.del-btn{background:#fde68a;color:#7a4a02 !important;border-color:#f59e0b}
+.del-btn:hover{background:#fcd34d}
 .pdf-btn{display:inline-flex;align-items:center;gap:4px;background:#d04949;color:#fff !important;padding:3px 10px;border-radius:6px;font-weight:700;text-decoration:none;font-size:12px;box-shadow:0 1px 0 rgba(0,0,0,.08);transition:background .12s}
 .pdf-btn:hover{background:#b53636}
 .pdf-btn::before{content:"📄"}
@@ -1050,10 +1052,7 @@ function card(r, i, kind){
     return '<a class="land-btn" target="_blank" href="'+u+'" title="'+u+'">'+label+'</a>';
   }).join(''));
   const isUnverified = !!r.unverified;
-  const verifyBtn = isUnverified ? '<button class="primary" onclick="markVerified('+i+')">確認済みにする</button>' : '<button onclick="markUnverified('+i+')">未検証に戻す</button>';
-  const actionBtns = '<button onclick="saveRecord('+i+')">保存</button>'
-    + verifyBtn
-    + '<button class="warn" onclick="removeRecord('+i+')">削除</button>';
+  const actionBtns = '<button class="del-btn" onclick="removeRecord('+i+')">削除</button>';
   const unverifiedPill = isUnverified ? '<span class="pill unverified-pill">⚠ 未検証</span>' : '';
   const searchHitBadge = r.search_hit ? '<span class="pill" style="background:#e8f2f3;color:#004e56" title="このレコードは検索ヒット由来">🔍 検索ヒット</span>' : '';
   const extractedBadge = r.extracted ? '<span class="pill" style="background:#fef9e8;color:#996515">参考文献由来</span>' : '';
@@ -1514,15 +1513,24 @@ try {
 if ($('query')) $('query').value = '';
 if ($('author')) $('author').value = '';
 
+// Auto-save card edits: when an input within a card loses focus, mirror its value
+// back into state.records (so the next CSV/Bib download reflects the edit).
+$('content').addEventListener('focusout', (e) => {
+  const el = e.target;
+  if (!el || !el.dataset || !el.dataset.field) return;
+  const card = el.closest('.item');
+  if (!card) return;
+  const i = parseInt(card.getAttribute('data-orig-idx'));
+  if (isNaN(i) || !state.records[i]) return;
+  state.records[i][el.dataset.field] = el.value;
+});
+
 links($('query').value);
 syncProjectPreview();
 refreshUI();
 
 // Expose for inline onclick
-window.saveRecord = saveRecord;
 window.removeRecord = removeRecord;
-window.markVerified = markVerified;
-window.markUnverified = markUnverified;
 window.swapTitle = swapTitle;
 </script>
 </body>
