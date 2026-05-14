@@ -90,6 +90,30 @@ button:disabled{opacity:.55;cursor:not-allowed}
 </style>
 </head>
 <body>
+<div id="fileProtocolWarning" style="display:none;position:fixed;inset:0;background:rgba(10,14,19,0.92);color:#fff;z-index:9999;align-items:center;justify-content:center;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Inter',system-ui,sans-serif">
+  <div style="max-width:560px;background:#1a2028;border:1px solid #2d3744;border-radius:12px;padding:30px 32px;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+    <h2 style="margin:0 0 14px;font-size:22px;font-weight:800;color:#fff">LitScope はローカル直開きでは動きません</h2>
+    <p style="margin:0 0 12px;line-height:1.6;color:#cbd2db;font-size:15px">
+      この HTML を <code style="background:#0a0e13;padding:1px 6px;border-radius:3px;color:#e8a4a4">file://</code> で直接開くと、ブラウザのセキュリティ制約でローカル文献データベースも外部検索 API も読み込めません。
+    </p>
+    <p style="margin:0 0 20px;line-height:1.6;color:#cbd2db;font-size:15px">
+      下のリンクから公開版をご利用ください：
+    </p>
+    <a href="https://michinorishimoji.github.io/LitSearch/" style="display:inline-block;background:#fff;color:#0a0e13;padding:11px 22px;border-radius:6px;font-weight:700;text-decoration:none;font-size:15px">
+      https://michinorishimoji.github.io/LitSearch/ を開く →
+    </a>
+    <p style="margin:22px 0 0;line-height:1.55;color:#8b95a3;font-size:12px;border-top:1px solid #2d3744;padding-top:14px">
+      または開発用にローカルサーバを立てる場合：<br>
+      <code style="background:#0a0e13;padding:2px 8px;border-radius:3px;color:#9bcfa0;font-size:12px;display:inline-block;margin-top:6px">cd docs &amp;&amp; python3 -m http.server 8000</code><br>
+      <span style="display:inline-block;margin-top:4px">→ http://localhost:8000/ を開く</span>
+    </p>
+  </div>
+</div>
+<script>
+  if (location.protocol === 'file:') {
+    document.getElementById('fileProtocolWarning').style.display = 'flex';
+  }
+</script>
 <header>
   <div class="logo-wrap">
     <h1 class="logo" aria-label="LitScope"><span class="dot"></span><span class="word-lit">Lit</span><span class="word-scope">Scope</span></h1>
