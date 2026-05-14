@@ -327,6 +327,54 @@ function normalizeCrossref(item, query){
   r.harvard_reference = makeHarvard(r);
   return r;
 }
+// Fetch the .json variant of a CiNii crid record and pull out all useful URLs.
+// Sets record.additional_urls and may set record.pdf_url if a *.pdf URL is found.
+async function enrichCiniiUrl(record){
+  if (!record.url || !/cir\.nii\.ac\.jp\/crid\//.test(record.url)) return;
+  const jsonUrl = record.url.split('?')[0] + '.json';
+  try {
+    const r = await fetch(jsonUrl);
+    if (!r.ok) return;
+    const data = await r.json();
+    const urls = new Set();
+    (function walk(x){
+      if (typeof x === 'string' && /^https?:\/\//.test(x)) urls.add(x);
+      else if (x && typeof x === 'object'){
+        for (const v of (Array.isArray(x) ? x : Object.values(x))) walk(v);
+      }
+    })(data);
+    // Filter out schema/context/namespace noise
+    const skipPrefixes = [
+      'http://purl.org/','http://www.w3.org/','https://www.w3.org/',
+      'http://xmlns.com/','http://prismstandard.org/','http://schema.org/',
+      'https://schema.datacite.org/','http://rdfs.org/','http://www.openarchives.org/',
+      'http://a9.com/','http://ndl.go.jp/dcndl/','https://github.com/',
+      'http://ci.nii.ac.jp/ns/','https://cir.nii.ac.jp/schema/',
+    ];
+    const additional = [];
+    for (const u of urls){
+      if (skipPrefixes.some(p => u.startsWith(p))) continue;
+      if (u === record.url || u === jsonUrl) continue;
+      if (u.startsWith('https://cir.nii.ac.jp/all?')) continue;
+      // De-duplicate alongside the existing url field
+      if (additional.includes(u)) continue;
+      additional.push(u);
+    }
+    if (additional.length){
+      record.additional_urls = additional.slice(0, 12);
+      if (!record.pdf_url){
+        const pdfLike = additional.find(u => /\.pdf(\?|#|$)/i.test(u));
+        if (pdfLike) record.pdf_url = pdfLike;
+      }
+    }
+  } catch (e){ /* silent */ }
+}
+async function enrichCiniiRecords(records){
+  const ciniiRecs = records.filter(r => r && r.source_checked && r.source_checked.indexOf('CiNii search') === 0);
+  if (!ciniiRecs.length) return;
+  await Promise.allSettled(ciniiRecs.map(r => enrichCiniiUrl(r)));
+}
+
 function normalizeCinii(item, query){
   const title = item.title || '';
   // Authors: CiNii Japanese names usually look like "下地 理則" or "下地, 理則" or "新永, 悠人"
@@ -1000,6 +1048,13 @@ function inputField(name, value, wide=false){
 function card(r, i, kind){
   const pdf = r.pdf_url ? '<a class="pdf-btn" target="_blank" href="'+r.pdf_url+'" title="'+r.pdf_url+'">PDF</a>' : '';
   const land = r.url ? '<a class="land-btn" target="_blank" href="'+r.url+'" title="'+r.url+'">書誌ページ</a>' : '';
+  // Additional candidate URLs (NDL, repository, NAID, etc.) from CiNii enrichment
+  const moreLinks = ((r.additional_urls||[]).slice(0, 6).map(u => {
+    let host = '';
+    try { host = new URL(u).host.replace(/^www\./,''); } catch (e){ host = 'link'; }
+    const label = host.length > 28 ? host.slice(0,26)+'…' : host;
+    return '<a class="land-btn" target="_blank" href="'+u+'" title="'+u+'">'+label+'</a>';
+  }).join(''));
   const isUnverified = !!r.unverified;
   const verifyBtn = isUnverified ? '<button class="primary" onclick="markVerified('+i+')">確認済みにする</button>' : '<button onclick="markUnverified('+i+')">未検証に戻す</button>';
   const actionBtns = '<button onclick="saveRecord('+i+')">保存</button>'
@@ -1039,7 +1094,7 @@ function card(r, i, kind){
     + altLine
     + unverifiedBanner
     + '<div class="small">'+(r.author||'')+'</div><div class="small">'+(r.container||r.publisher||'')+'</div>'
-    + '<div class="small links">'+pdf+land+'</div>'
+    + '<div class="small links">'+pdf+land+moreLinks+'</div>'
     + '<div class="edit">'+fields.map(f => inputField(f, r[f], wideFields.includes(f))).join('')+'</div>'
     + '<div class="actions">'+actionBtns+'</div>'
     + '</div>';
@@ -1127,6 +1182,9 @@ async function search(){
       setStatus('検索結果なし: 「'+sigLabel+'」');
       return;
     }
+    // Enrich CiNii records: fetch their .json variant to pull NDL / repository / NAID URLs
+    setStatus('CiNiiの補助メタデータを取得中...');
+    await enrichCiniiRecords(initial);
     // Mark and add direct hits to records
     for (const r of initial){
       r.search_hit = true;
