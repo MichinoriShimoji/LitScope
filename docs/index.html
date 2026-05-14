@@ -365,6 +365,41 @@ async function enrichCiniiUrl(record){
     const r = await fetch(jsonUrl);
     if (!r.ok) return;
     const data = await r.json();
+    // ---- 1) Pick the right title language (CiNii sometimes shows only the
+    //         Japanese translation in OpenSearch even when the paper is
+    //         originally in English; the detailed JSON has both)
+    const titles = data['dc:title'];
+    if (Array.isArray(titles) && titles.length){
+      const recordLang = (data['dc:language'] || '').toLowerCase().slice(0,2);
+      const byLang = {};
+      for (const t of titles){
+        if (!t) continue;
+        const v = (typeof t === 'string') ? t : (t['@value'] || '');
+        if (!v) continue;
+        const l = (t['@language'] || '').toLowerCase().slice(0,2);
+        if (!byLang[l]) byLang[l] = v;
+      }
+      // Preference: original language → English → Japanese → any
+      let picked = '';
+      if (recordLang && byLang[recordLang]) picked = byLang[recordLang];
+      else if (byLang['en']) picked = byLang['en'];
+      else if (byLang['ja']) picked = byLang['ja'];
+      else picked = byLang[''] || Object.values(byLang)[0] || '';
+      if (picked && picked !== record.title){
+        // Stash the current (probably translated) title as alternate
+        const oldTitle = record.title;
+        record.title = picked;
+        if (oldTitle && oldTitle !== picked) record.alt_title = oldTitle;
+        // id and harvard depend on title
+        record.id = slug((record.author||'cinii')+'_'+(record.year||'')+'_'+picked);
+        record.harvard_reference = makeHarvard(record);
+      } else if (Object.keys(byLang).filter(Boolean).length >= 2){
+        // Title unchanged, but surface the other-language form as alt for the swap button
+        const others = [byLang['ja'], byLang['en']].filter(v => v && v !== record.title);
+        if (others.length && !record.alt_title) record.alt_title = others[0];
+      }
+    }
+    // ---- 2) Additional candidate URLs
     const urls = new Set();
     (function walk(x){
       if (typeof x === 'string' && /^https?:\/\//.test(x)) urls.add(x);
