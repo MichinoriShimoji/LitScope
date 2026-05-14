@@ -567,8 +567,12 @@ function uniqueRecords(records){
     const t = norm(r.title);
     const yr = String(r.year||'').match(/\d{4}/);
     const aLast = r.author ? norm(String(r.author).split(/[;,]/)[0]) : '';
+    // Always register the title+year key so OpenAlex (Latin author) and
+    // CiNii (Japanese author) records of the same paper still collide.
+    if (t && yr) ks.push('ty:'+t.slice(0,80)+'|'+yr[0]);
+    // ...with the stricter title+year+author key alongside, for safety
+    // when two different works happen to share title and year.
     if (t && yr && aLast) ks.push('tay:'+t.slice(0,80)+'|'+yr[0]+'|'+aLast);
-    else if (t && yr) ks.push('ty:'+t.slice(0,80)+'|'+yr[0]);
     if (r.id) ks.push('id:'+r.id);
     return ks;
   };
