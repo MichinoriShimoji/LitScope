@@ -1,32 +1,39 @@
-# LitSearch
+# LitScope
 
-ブラウザだけで動く文献収集ツールと、収集済みの文献リスト（伊良部島方言ほか）。
+ブラウザだけで動く、**日本語・英語の方言／言語学文献の総合検索システム**。
 
-## ツール（GitHub Pages）
+## 公開URL（GitHub Pages）
 
 🔗 **https://michinorishimoji.github.io/LitSearch/**
 
-サーバー不要、データはローカル（ブラウザの localStorage）に留まり、成果物は ZIP で一括ダウンロードできます。
+## できること
 
-3段階のワークフロー：
+- **松岡葵氏作成「地域別方言文献リスト」（11,000件超）** を基礎データベースとして組み込み
+- **CiNii Research / OpenAlex / Crossref** のリアルタイム検索を並列に追加
+- 重複は自動で1件に統合（タイトル＋年＋著者ベース、サブタイトル差・スクリプト差にも対応）
+- ヒット論文の参考文献を PDF（PDF.js）または Crossref メタから自動取得し、関連論文まで一気に拡張
+- 結果カードは編集／削除可。**ZIP** で CSV ／ BibTeX ／ Zotero用 BibTeX ／ PDFリンク一覧を取り出せる
+- 起動中の **Zotero Desktop** に直接 BibTeX を送信
+- すべてブラウザ内で完結。サーバー送信なし
 
-1. **Stage 1 — キーワード検索**：Crossref + OpenAlex を並列検索 → 候補を編集 → 本体CSVへ追加
-2. **Stage 2 — 孫引き一括抽出**：本体CSV内のDOI付きレコードから参考文献を Crossref で再取得し、自動再検証。失敗したものは「未検証フラグ」付きで本体に出る
-3. **Stage 3 — 確認・ダウンロード**：未検証カードを編集/削除 → ZIP（CSV / BibTeX / Zotero用 BibTeX / PDF URLリスト / 未検証CSV）
-
-詳しい使い方は [docs/README.md](docs/README.md) を参照。
-
-## 含まれる文献リスト
+## ファイル構成
 
 | ファイル | 内容 |
 |---|---|
+| `docs/index.html` | ツール本体（self-contained, ES module）|
+| `docs/data/hougen_search_results.csv` | 松岡葵氏作成 地域別方言文献リスト |
 | `irabu_dialect_literature.csv` / `.bib` | 伊良部島方言の文献リスト |
-| `zotero_import_irabu_tagged.bib` | Zotero取り込み用（tag付き） |
+| `zotero_import_irabu_tagged.bib` | Zotero 取り込み用（tag付き） |
 | `irabu_derivative_candidate_verification.csv` | 未確認候補 |
 | `shiiba_*.csv` / `.bib` | 椎葉方言（初期段階） |
 
-PDFs は著作権の都合で除外しています（`.gitignore`）。
+PDFs は著作権上、リポジトリには含めません（`.gitignore`）。
+
+## 著作・データ提供
+
+- ツール **LitScope** 著作：© 2026 **下地理則**（九州大学）
+- 基礎データ「地域別方言文献リスト」：松岡葵 氏 作成
 
 ## ライセンス
 
-ツール部分（`docs/index.html`）は MIT。文献リストデータは公開済みメタデータ由来。
+ツールコード（`docs/index.html`）は研究・教育目的での利用可。文献リストデータは公開済み書誌メタデータ由来。
