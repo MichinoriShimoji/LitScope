@@ -10,7 +10,7 @@
 :root{color-scheme:light;--ink:#1d252c;--muted:#64717d;--line:#d9e0e6;--bg:#f6f8fa;--panel:#fff;--accent:#006d77;--warn:#996515}
 *{box-sizing:border-box}
 body{margin:0;font:14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}
-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:2}
+header{display:flex;align-items:flex-end;justify-content:space-between;padding:22px 24px 18px;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:2}
 h1{font-size:18px;margin:0;font-weight:650}
 .meta{color:var(--muted);font-size:12px}
 main{display:grid;grid-template-columns:360px 1fr;min-height:calc(100vh - 54px)}
@@ -50,24 +50,22 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .unverified-banner strong{color:#7a4a02}
 .pill.unverified-pill{background:#fde68a;color:#7a4a02;border-color:#f59e0b;font-weight:700}
 /* LitScope logo */
+.logo-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .logo{
-  display:inline-flex;align-items:baseline;gap:10px;
+  display:inline-flex;align-items:baseline;gap:18px;
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",system-ui,sans-serif;
-  font-size:30px;font-weight:800;letter-spacing:-0.025em;
-  color:#0e1620;margin:0;line-height:1
+  font-size:64px;font-weight:900;letter-spacing:-0.04em;
+  color:#0a0e13;margin:0;line-height:1
 }
 .logo .dot{
-  display:inline-block;width:11px;height:11px;border-radius:50%;
-  background:linear-gradient(135deg,#02929b,#0a4d56);
-  box-shadow:0 0 0 3px rgba(2,146,155,0.18);
-  transform:translateY(-2px)
+  display:inline-block;width:18px;height:18px;border-radius:50%;
+  background:#0a0e13;
+  box-shadow:0 0 0 5px rgba(10,14,19,0.10);
+  transform:translateY(-4px)
 }
-.logo .word-lit{color:#0e1620}
-.logo .word-scope{
-  background:linear-gradient(135deg,#02929b 0%, #0a4d56 70%);
-  -webkit-background-clip:text;background-clip:text;color:transparent;
-  font-weight:700
-}
+.logo .word-lit{color:#0a0e13;font-weight:300}
+.logo .word-scope{color:#0a0e13;font-weight:900}
+.logo-credit{font-size:12px;color:#6b7480;font-weight:500;letter-spacing:0.02em;margin-left:36px}
 .tagline{color:#475569;font-size:13px;margin-left:24px;font-weight:500}
 /* Intro panel */
 .intro{
@@ -93,7 +91,10 @@ button:disabled{opacity:.55;cursor:not-allowed}
 </head>
 <body>
 <header>
-  <h1 class="logo" aria-label="LitScope"><span class="dot"></span><span class="word-lit">Lit</span><span class="word-scope">Scope</span></h1>
+  <div class="logo-wrap">
+    <h1 class="logo" aria-label="LitScope"><span class="dot"></span><span class="word-lit">Lit</span><span class="word-scope">Scope</span></h1>
+    <div class="logo-credit">© 2026 <strong style="color:#0a0e13;font-weight:700">下地理則</strong>（九州大学）</div>
+  </div>
   <div class="meta" id="counts">loading</div>
 </header>
 <main>
@@ -177,12 +178,11 @@ button:disabled{opacity:.55;cursor:not-allowed}
     <p>松岡葵氏作成の<strong>「地域別方言文献リスト」（11,000件超）</strong>を基礎データベースとし、そこに <strong>CiNii Research</strong> ／ <strong>OpenAlex</strong> ／ <strong>Crossref</strong> のリアルタイム検索を組み合わせて横断照会します。重複は自動で1件に統合、ヒット論文の参考文献も自動で取得して関連論文まで一気に集めます。</p>
     <p>カードを編集／削除して整え、<strong>ZIPダウンロード</strong>で CSV ／ BibTeX ／ Zotero用 BibTeX を取り出すか、起動中の Zotero に直接送信できます。</p>
     <p class="small">ローカルDBが書誌情報の優先源。Web から取れた値は補完として使います。すべてブラウザ内で完結し、データは外部に送られません。</p>
-    <div style="margin-top:12px;padding:12px 14px;border-top:1px dashed var(--line);background:linear-gradient(135deg,rgba(2,146,155,.06),rgba(10,77,86,.04));border-radius:6px">
+    <div style="margin-top:12px;padding:12px 14px;border-top:1px dashed var(--line);background:#f5f5f4;border-radius:6px">
       <p style="margin:0;font-size:.98em">
-        基礎データ：『地域別方言文献リスト』<span style="font-size:1.1em;margin:0 4px">©</span><strong style="font-size:1.08em;color:#0a4d56">松岡葵</strong> 氏作成
-        <a href="data/hougen_search_results.csv" download="chiikibetsu_hougen_bunken_list.csv" style="display:inline-block;margin-left:10px;padding:3px 12px;background:#006d77;color:#fff;font-weight:600;text-decoration:none;border-radius:4px;font-size:.88em">CSVをダウンロード</a>
+        基礎データ：『地域別方言文献リスト』<span style="font-size:1.1em;margin:0 4px">©</span><strong style="font-size:1.08em;color:#0a0e13">松岡葵</strong> 氏作成
+        <a href="data/hougen_search_results.csv" download="chiikibetsu_hougen_bunken_list.csv" style="display:inline-block;margin-left:10px;padding:3px 12px;background:#0a0e13;color:#fff;font-weight:600;text-decoration:none;border-radius:4px;font-size:.88em">CSVをダウンロード</a>
       </p>
-      <p class="small" style="margin:6px 0 0;color:var(--muted)">ツール LitScope © 2026 <strong>下地理則</strong>（九州大学）</p>
     </div>
   </div>
   <div class="toolbar" style="margin-top:4px;flex-wrap:wrap">
