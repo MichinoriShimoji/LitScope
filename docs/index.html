@@ -130,9 +130,10 @@ button:disabled{opacity:.55;cursor:not-allowed}
       <input class="fileInput" type="file" id="importCsv" accept=".csv,text/csv">
     </div>
     <div class="small" style="margin-top:6px">アップロードすると現在の作業データを上書きします。</div>
-    <div class="section-title">localStorage</div>
+    <div class="section-title">現在のセッションをリセット</div>
+    <div class="small">作業中のレコードを今すぐ消したい場合（リロードと同じ効果）</div>
     <div class="actions">
-      <button class="warn" id="clearProjectBtn">このプロジェクトをクリア</button>
+      <button class="warn" id="clearProjectBtn">セッションをリセット</button>
     </div>
   </details>
 
@@ -952,17 +953,16 @@ async function searchAll(query, author, rows){
 }
 
 // =============================================================================
-// State (localStorage)
+// State (in-memory only — fresh on every page load)
 // =============================================================================
+// We deliberately do NOT persist to localStorage. Every refresh starts clean.
 function stateKey(project){ return 'litpipe:'+projectSlug(project); }
 function loadProjectState(project){
-  const raw = localStorage.getItem(stateKey(project));
-  if (!raw) return { records: [], derivatives: [] };
-  try { return JSON.parse(raw); }
-  catch (e) { return { records: [], derivatives: [] }; }
+  // Always return empty: the user wants a clean slate on each page load.
+  return { records: [], derivatives: [] };
 }
 function saveProjectState(project, ps){
-  localStorage.setItem(stateKey(project), JSON.stringify(ps));
+  // No-op. State is held in memory only.
 }
 function currentProject(){ return document.getElementById('project').value.trim() || DEFAULT_PROJECT; }
 function syncProjectPreview(){
@@ -977,50 +977,18 @@ let state = { records: [], derivatives: [], counts: {} };
 let tab = 'records';
 const $ = id => document.getElementById(id);
 function setStatus(s){ $('status').textContent = s; }
-function reloadFromStorage(){
-  const ps = loadProjectState(currentProject());
-  state.records = ps.records || [];
-  // Migrate any legacy derivative entries into records as unverified items (one-shot)
-  const legacyDeriv = ps.derivatives || [];
-  if (legacyDeriv.length){
-    for (const d of legacyDeriv){
-      state.records.push({
-        id: d.candidate_id || ('migrated_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),
-        type: 'article',
-        author: '',
-        year: '',
-        title: d.normalized_candidate || d.derived_citation_as_found || '(legacy derivative)',
-        container: '',
-        publisher: '',
-        doi: '',
-        url: '',
-        pdf_url: '',
-        source_checked: '',
-        harvard_reference: d.final_or_provisional_harvard_reference || '',
-        unverified: true,
-        derived_from: d.derived_from || '',
-        derived_citation_as_found: d.derived_citation_as_found || '',
-        verification_failed_reason: d.verification_sources || '(legacy derivative — migrated)',
-      });
-    }
-    state.records = uniqueRecords(state.records);
-    saveProjectState(currentProject(), { records: state.records });
-    setStatus('過去のderivativeエントリ '+legacyDeriv.length+' 件を未検証として本体に統合しました。');
-  }
+function refreshUI(){
   state.derivatives = [];
   const unverifiedCount = state.records.filter(r => r.unverified).length;
   state.counts = { records: state.records.length, unverified: unverifiedCount };
-  const badge = unverifiedCount ? ' <span style="color:#8c2d11">⚠ '+unverifiedCount+'</span>' : '';
   $('counts').textContent = projectSlug(currentProject())+': '+state.counts.records+' records'+(unverifiedCount? ' (内 '+unverifiedCount+' 件未検証)' : '');
   const rb = $('recordsBadge');
   if (rb) rb.innerHTML = unverifiedCount ? ' <span style="background:#fde68a;color:#7a4a02;border-radius:999px;padding:1px 7px;font-size:11px;margin-left:4px">⚠'+unverifiedCount+'</span>' : '';
   updateBulkCount();
   render();
 }
-function persist(){
-  saveProjectState(currentProject(), { records: state.records });
-  reloadFromStorage();
-}
+function reloadFromStorage(){ refreshUI(); }
+function persist(){ refreshUI(); }
 
 // =============================================================================
 // Render
@@ -1473,15 +1441,14 @@ function clearAllRecords(){
   }
   if (!confirm('本体レコード '+state.records.length+' 件をすべて削除します。よろしいですか？\n（ダウンロード済みCSVは消えません。元に戻すには「詳細」→「本体CSVを取り込み」で復元できます）')) return;
   state.records = [];
-  saveProjectState(currentProject(), { records: [] });
-  reloadFromStorage();
+  refreshUI();
   setStatus('全レコードを削除しました。');
 }
 function clearProject(){
-  if (!confirm('プロジェクト「'+projectSlug(currentProject())+'」の localStorage を削除します。ダウンロードしていない作業データは失われます。よろしいですか？')) return;
-  localStorage.removeItem(stateKey(currentProject()));
-  setStatus('プロジェクトのlocalStorageを削除しました。');
-  reloadFromStorage();
+  if (!confirm('現在の作業中レコードをすべて消去します。よろしいですか？')) return;
+  state.records = [];
+  refreshUI();
+  setStatus('現在のレコードをすべて消去しました。');
 }
 
 // =============================================================================
@@ -1509,9 +1476,21 @@ $('query').oninput = () => links($('query').value);
 $('project').oninput = syncProjectPreview;
 $('project').onchange = reloadFromStorage;
 
+// Clean up any localStorage left over from older versions (we no longer persist).
+try {
+  for (let i = localStorage.length - 1; i >= 0; i--){
+    const k = localStorage.key(i);
+    if (k && k.indexOf('litpipe:') === 0) localStorage.removeItem(k);
+  }
+} catch (e){}
+
+// Ensure search box is empty at every page load
+if ($('query')) $('query').value = '';
+if ($('author')) $('author').value = '';
+
 links($('query').value);
 syncProjectPreview();
-reloadFromStorage();
+refreshUI();
 
 // Expose for inline onclick
 window.saveRecord = saveRecord;
