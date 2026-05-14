@@ -359,8 +359,9 @@ function normalizeCrossref(item, query){
 // Fetch the .json variant of a CiNii crid record and pull out all useful URLs.
 // Sets record.additional_urls and may set record.pdf_url if a *.pdf URL is found.
 async function enrichCiniiUrl(record){
-  if (!record.url || !/cir\.nii\.ac\.jp\/crid\//.test(record.url)) return;
-  const jsonUrl = record.url.split('?')[0] + '.json';
+  const src = record._cinii_url || record.url;
+  if (!src || !/cir\.nii\.ac\.jp\/crid\//.test(src)) return;
+  const jsonUrl = src.split('?')[0] + '.json';
   try {
     const r = await fetch(jsonUrl);
     if (!r.ok) return;
@@ -438,7 +439,14 @@ async function enrichCiniiUrl(record){
   } catch (e){ /* silent */ }
 }
 async function enrichCiniiRecords(records){
-  const ciniiRecs = records.filter(r => r && r.source_checked && r.source_checked.indexOf('CiNii search') === 0);
+  // Any record carrying a CiNii crid URL (in _cinii_url or url, after merge)
+  // gets enriched. This catches both pure CiNii hits and records that merged
+  // with a sibling from OpenAlex/Crossref.
+  const ciniiRecs = records.filter(r => {
+    if (!r) return false;
+    const u = r._cinii_url || r.url || '';
+    return /cir\.nii\.ac\.jp\/crid\//.test(u);
+  });
   if (!ciniiRecs.length) return;
   await Promise.allSettled(ciniiRecs.map(r => enrichCiniiUrl(r)));
 }
@@ -487,6 +495,10 @@ function normalizeCinii(item, query){
     if (typeof v === 'string' && /\.pdf(\?|#|$)/i.test(v)){ pdfUrl = v; break; }
   }
   const volume = String(item['prism:volume']||'').replace(/^[\-－—‐]$/, '');
+  // _cinii_url is a dedicated field so the CiNii crid URL survives cross-source
+  // merging (in which `url` may already be set by OpenAlex/Crossref and the
+  // CiNii url would otherwise be dropped).
+  const ciniiUrl = /cir\.nii\.ac\.jp\/crid\//.test(url) ? url : '';
   const r = {
     id: slug((authors||'cinii')+'_'+year+'_'+title),
     type, author: authors, year, title, container,
@@ -496,6 +508,7 @@ function normalizeCinii(item, query){
     issue: item['prism:issueIdentifier'] || '',
     pages,
     doi, isbn, issn, url,
+    _cinii_url: ciniiUrl,
     pdf_url: pdfUrl,
     scope: '',
     abstract_note: item.description || '',
@@ -542,28 +555,49 @@ function normalizeOpenAlex(item, query){
   return r;
 }
 function uniqueRecords(records){
-  // Map-based merge: when multiple records collide on the same key (DOI/id),
-  // keep the FIRST one but fill in any empty fields from later collisions.
-  // This prevents (e.g.) a Crossref record without pdf_url from masking the
-  // OpenAlex record that DOES have pdf_url for the same DOI.
+  // Merge across sources using multiple keys: DOI, then (title+year+author),
+  // then id. A single record may match by ANY of its keys, so a CiNii record
+  // with a DOI can collide with an OpenAlex record that has the same title
+  // but no DOI, and they get merged into one record carrying both signals.
+  const norm = s => String(s||'').toLowerCase().replace(/[\s　]+/g,'').replace(/[^a-z0-9぀-ヿ㐀-鿿＀-￯]/g,'');
+  const keysOf = r => {
+    const ks = [];
+    if (r.doi) ks.push('doi:'+String(r.doi).toLowerCase());
+    if (r.candidate_id) ks.push('candidate:'+r.candidate_id);
+    const t = norm(r.title);
+    const yr = String(r.year||'').match(/\d{4}/);
+    const aLast = r.author ? norm(String(r.author).split(/[;,]/)[0]) : '';
+    if (t && yr && aLast) ks.push('tay:'+t.slice(0,80)+'|'+yr[0]+'|'+aLast);
+    else if (t && yr) ks.push('ty:'+t.slice(0,80)+'|'+yr[0]);
+    if (r.id) ks.push('id:'+r.id);
+    return ks;
+  };
   const seen = new Map();
   for (const r of records){
-    const k = (r.doi && 'doi:'+r.doi.toLowerCase())
-      || (r.id && 'id:'+r.id)
-      || (r.candidate_id && 'candidate:'+r.candidate_id)
-      || 'title:'+String(r.title||r.normalized_candidate||'').toLowerCase()+':'+(r.year||'');
-    const existing = seen.get(k);
-    if (!existing){ seen.set(k, r); continue; }
-    // Merge: fill empty fields in `existing` with values from `r`
-    for (const key of Object.keys(r)){
-      const cur = existing[key];
-      const nxt = r[key];
-      if ((cur === undefined || cur === '' || cur === null) && nxt){
-        existing[key] = nxt;
+    const keys = keysOf(r);
+    if (!keys.length) continue;
+    let existing = null;
+    for (const k of keys){
+      if (seen.has(k)){ existing = seen.get(k); break; }
+    }
+    if (existing){
+      // Fill empty fields in `existing` with values from `r`
+      for (const key of Object.keys(r)){
+        const cur = existing[key];
+        const nxt = r[key];
+        if ((cur === undefined || cur === '' || cur === null) && nxt){
+          existing[key] = nxt;
+        }
       }
+      // Register all of r's keys → existing, so future records can find it
+      for (const k of keys){
+        if (!seen.has(k)) seen.set(k, existing);
+      }
+    } else {
+      for (const k of keys) seen.set(k, r);
     }
   }
-  return [...seen.values()];
+  return Array.from(new Set(seen.values()));
 }
 function plausibleResult(record, query, author){
   const haystackTitle = (String(record.title||'')+' '+String(record.container||'')+' '+String(record.abstract_note||'')).toLowerCase();
