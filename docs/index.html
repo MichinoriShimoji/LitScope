@@ -1016,9 +1016,8 @@ function card(r, i, kind){
     refsExtractedBadge = '<span class="pill" style="background:#e3eef9;color:#16447f" title="Crossrefメタデータから参考文献を抽出済">Crossref孫引済</span>';
   } else if (r.refs_extracted === true){
     refsExtractedBadge = '<span class="pill" style="background:#e8f2f3;color:#004e56" title="既に参考文献を抽出済">孫引済</span>';
-  } else if (typeof r.refs_extracted === 'string'){
-    refsExtractedBadge = '<span class="pill" style="background:#fbe5dd;color:#8c2d11" title="抽出時の状態: '+r.refs_extracted+'">孫引失敗</span>';
   }
+  // failed-extraction case: intentionally show no badge (state still tracked internally)
   const header = unverifiedPill + searchHitBadge + '<span class="pill">'+(r.type||'')+'</span><span class="pill">'+(r.year||'n.d.')+'</span>' + extractedBadge + parentBadge + refsExtractedBadge;
   const titleText = r.title || '(タイトル未抽出)';
   const fields = ['id','type','author','year','title','container','publisher','pages','doi','isbn','issn','url','pdf_url','source_checked'];
