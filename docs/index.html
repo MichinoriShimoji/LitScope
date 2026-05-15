@@ -36,6 +36,13 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px}
 .status{font-size:12px;color:var(--ink);white-space:pre-wrap;margin-top:12px;padding:8px 10px;background:#f6f8fa;border:1px solid var(--line);border-radius:6px;min-height:24px}
 .status:empty{display:none}
+.progress{display:none;margin-top:12px;border:1px solid var(--line);border-radius:8px;background:#f8fafb;padding:9px 10px}
+.progress.active{display:block}
+.progress-label{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);margin-bottom:7px}
+.progress-track{height:8px;border-radius:999px;background:#dde6ee;overflow:hidden}
+.progress-fill{height:100%;width:0;background:var(--accent);border-radius:999px;transition:width .25s ease}
+.progress.indeterminate .progress-fill{width:42%;animation:progressSlide 1.05s ease-in-out infinite}
+@keyframes progressSlide{0%{transform:translateX(-110%)}50%{transform:translateX(80%)}100%{transform:translateX(250%)}}
 .edit{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .edit label{margin-top:0}
 .wide{grid-column:1/-1}
@@ -224,6 +231,10 @@ button:disabled{opacity:.55;cursor:not-allowed}
     </div>
   </details>
 
+  <div class="progress" id="progressBox" aria-live="polite">
+    <div class="progress-label"><span id="progressLabel">処理中...</span><span id="progressPercent"></span></div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
   <div class="status" id="status"></div>
 </aside>
 <section>
@@ -1433,13 +1444,20 @@ async function bulkExtractReferences(){
     }
     const withPdf = targets.filter(r => r.pdf_url).length;
     const withDoiOnly = targets.length - withPdf;
+    setProgress('関連論文を取得中', 0);
     setStatus(targets.length+' 件のレコードから参考文献を抽出中... (PDF読込試行 '+withPdf+' 件 / Crossrefのみ '+withDoiOnly+' 件)');
     $('bulkExtractBtn').disabled = true;
     let totalVerified = 0, totalUnverified = 0, totalRefs = 0, viaPdf = 0, viaCrossref = 0, viaNone = 0;
     for (let n = 0; n < targets.length; n++){
       const parent = targets[n];
       const parentLabel = parent.doi || parent.pdf_url || parent.title || '(no id)';
-      window._bulkProgressCb = (k, total, src) => setStatus('関連論文取得 ['+(src||'?')+'] — 元論文 '+(n+1)+'/'+targets.length+' ('+String(parentLabel).slice(0,40)+') — 参考文献 '+k+'/'+total+' 検証中... (累計: 取込済 '+totalVerified+' / 要編集 '+totalUnverified+')');
+      window._bulkProgressCb = (k, total, src) => {
+        const parentBase = (n / targets.length) * 100;
+        const parentShare = 100 / targets.length;
+        setProgress('関連論文を取得中', parentBase + parentShare * (total ? k / total : 0.5));
+        setStatus('関連論文取得 ['+(src||'?')+'] — 元論文 '+(n+1)+'/'+targets.length+' ('+String(parentLabel).slice(0,40)+') — 参考文献 '+k+'/'+total+' 検証中... (累計: 取込済 '+totalVerified+' / 要編集 '+totalUnverified+')');
+      };
+      setProgress('関連論文を取得中', (n / targets.length) * 100);
       setStatus('関連論文取得 — 元論文 '+(n+1)+'/'+targets.length+' ('+String(parentLabel).slice(0,60)+') を処理中...');
       const { verified, unverified, refsFetched, source } = await extractRefsForParent(parent);
       totalVerified += verified;
@@ -1450,6 +1468,7 @@ async function bulkExtractReferences(){
       else viaNone++;
     }
     window._bulkProgressCb = null;
+    setProgress('関連論文取得完了', 100);
     state.records = uniqueRecords(state.records);
     persist();
     tab = 'records';
@@ -1463,6 +1482,7 @@ async function bulkExtractReferences(){
     );
   } catch (e){
     $('bulkExtractBtn').disabled = false;
+    clearProgress();
     setStatus('関連論文取得でエラー発生: '+e.message);
     alert('関連論文取得でエラー発生: '+e.message+'\n\nブラウザのコンソール（F12 → Console）で詳細を確認できます。');
     console.error('bulkExtractReferences error:', e);
@@ -1671,6 +1691,34 @@ let state = { records: [], derivatives: [], counts: {} };
 let tab = 'records';
 const $ = id => document.getElementById(id);
 function setStatus(s){ $('status').textContent = s; }
+function setProgress(label, value=null){
+  const box = $('progressBox');
+  if (!box) return;
+  const labelEl = $('progressLabel');
+  const percentEl = $('progressPercent');
+  const fill = $('progressFill');
+  box.classList.add('active');
+  if (labelEl) labelEl.textContent = label || '処理中...';
+  if (value == null){
+    box.classList.add('indeterminate');
+    if (percentEl) percentEl.textContent = '';
+    if (fill) fill.style.width = '';
+    return;
+  }
+  const pct = Math.max(0, Math.min(100, Math.round(value)));
+  box.classList.remove('indeterminate');
+  if (percentEl) percentEl.textContent = pct+'%';
+  if (fill) fill.style.width = pct+'%';
+}
+function clearProgress(){
+  const box = $('progressBox');
+  if (!box) return;
+  box.classList.remove('active', 'indeterminate');
+  const percentEl = $('progressPercent');
+  const fill = $('progressFill');
+  if (percentEl) percentEl.textContent = '';
+  if (fill) fill.style.width = '0';
+}
 function refreshUI(){
   state.derivatives = [];
   const unverifiedCount = state.records.filter(r => r.unverified).length;
@@ -1832,6 +1880,7 @@ async function search(){
   const sigLabel = [q, author?'著者:'+author:''].filter(Boolean).join(' / ');
   links(q || author);
   $('searchBtn').disabled = true;
+  setProgress('検索を準備中', 3);
   // Optional: clear previous records unless user opted in to accumulate.
   // Re-running a search silently clears prior records — users can opt in to
   // the additive mode via the 「前回の結果を残して追加検索」 checkbox.
@@ -1843,10 +1892,12 @@ async function search(){
   }
   try {
     // Phase 1: keyword search
+    setProgress('文献データベースを検索中', null);
     setStatus('検索中: 「'+sigLabel+'」 (Crossref + OpenAlex + CiNii)...');
     const rows = Number($('rows').value||10);
     const initial = await searchAll(q, author, rows);
     if (!initial.length){
+      clearProgress();
       setStatus('検索結果なし: 「'+sigLabel+'」');
       return;
     }
@@ -1854,8 +1905,10 @@ async function search(){
     // no DOI (often the Japanese translation of an originally-English paper),
     // look up the matching CiNii record by title so the next enrichment step
     // can pull back the original-language title.
+    setProgress('CiNiiメタデータを補完中', 35);
     setStatus('CiNiiの補助メタデータを取得中...');
     await attachCiniiUrlByTitle(initial);
+    setProgress('CiNiiメタデータを補完中', 50);
     await enrichCiniiRecords(initial);
     // Mark and add direct hits to records
     for (const r of initial){
@@ -1870,23 +1923,32 @@ async function search(){
     const autoEl = $('autoExtract');
     const doExtract = autoEl ? autoEl.checked : true;
     if (!doExtract){
+      setProgress('検索完了', 100);
       setStatus('検索完了: ヒット '+initial.length+' 件 (新規 '+addedHits+' 件) を本体に追加。関連論文の追加取得はOFF。');
       return;
     }
     // Phase 2: extended secondary citation extraction from each fresh search hit
     const parents = state.records.filter(r => r.search_hit && !r.refs_extracted && (r.doi || r.pdf_url));
     if (!parents.length){
+      setProgress('検索完了', 100);
       setStatus('検索完了: ヒット '+initial.length+' 件。関連論文の追加取得対象なし。');
       return;
     }
+    setProgress('関連論文を取得中', 55);
     setStatus('検索完了: ヒット '+initial.length+' 件。関連論文を '+parents.length+' 件の元論文から取得します...');
     let totalVerified = 0, totalUnverified = 0, totalRefs = 0, viaPdf = 0, viaCrossref = 0, viaNone = 0;
     for (let n = 0; n < parents.length; n++){
       const parent = parents[n];
       const parentLabel = parent.doi || parent.pdf_url || parent.title || '(no id)';
-      window._bulkProgressCb = (k, total, src) => setStatus(
-        '関連論文取得 ['+(src||'?')+'] — 元論文 '+(n+1)+'/'+parents.length+' ('+String(parentLabel).slice(0,40)+') — '+k+'/'+total+' 検証中... (累計: 取込済 '+totalVerified+' / 要編集 '+totalUnverified+')'
-      );
+      window._bulkProgressCb = (k, total, src) => {
+        const base = 55 + (n / parents.length) * 40;
+        const share = 40 / parents.length;
+        setProgress('関連論文を取得中', base + share * (total ? k / total : 0.5));
+        setStatus(
+          '関連論文取得 ['+(src||'?')+'] — 元論文 '+(n+1)+'/'+parents.length+' ('+String(parentLabel).slice(0,40)+') — '+k+'/'+total+' 検証中... (累計: 取込済 '+totalVerified+' / 要編集 '+totalUnverified+')'
+        );
+      };
+      setProgress('関連論文を取得中', 55 + (n / parents.length) * 40);
       setStatus('関連論文取得 — 元論文 '+(n+1)+'/'+parents.length+' ('+String(parentLabel).slice(0,60)+') を処理中...');
       const { verified, unverified, refsFetched, source } = await extractRefsForParent(parent);
       totalVerified += verified;
@@ -1897,9 +1959,11 @@ async function search(){
       else viaNone++;
     }
     window._bulkProgressCb = null;
+    setProgress('結果を整理中', 96);
     state.records = uniqueRecords(state.records);
     persist();
     render();
+    setProgress('完了', 100);
     setStatus(
       '完了:\n'
       +'  検索ヒット '+initial.length+' 件 (新規 '+addedHits+' 件)\n'
@@ -1908,6 +1972,7 @@ async function search(){
       +(totalUnverified ? '\n\n未検証（黄色枠）のカードが '+totalUnverified+' 件混ざっています。確認したい場合はサイドバーの「要編集のみ表示」をON。' : '')
     );
   } catch (e) {
+    clearProgress();
     setStatus('検索失敗: '+e.message);
     console.error('search error:', e);
   } finally {
