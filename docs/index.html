@@ -299,6 +299,8 @@ function makeHarvard(r){
   const doi=r.doi?'. doi:'+r.doi:'';
   if (r.type==='book') return a.replace(/, /g,'')+' ('+y+') '+title+'. '+(r.place?r.place+': ':'')+(r.publisher||'')+doi+'.';
   if (r.type==='chapter') return initials(a)+' ('+y+") '"+title+"', in "+(r.container||'')+pages+doi+'.';
+  if (r.type==='project') return initials(a)+' ('+y+") '"+title+"' [Research project]"+(r.publisher?', '+r.publisher:'')+doi+'.';
+  if (r.type==='dataset') return initials(a)+' ('+y+") '"+title+"' [Dataset]"+(r.publisher?', '+r.publisher:'')+doi+'.';
   return initials(a)+' ('+y+") '"+title+"', "+(r.container||'')+(r.volume?', '+r.volume:'')+(r.issue?'('+r.issue+')':'')+pages+doi+'.';
 }
 function yearFromDateParts(value){
@@ -363,7 +365,7 @@ function toBib(records, tag){
       seenKey.set(base, idx + 1);
       key = base + String.fromCharCode(96 + idx); // first dup→'a', next→'b', ...
     }
-    const type = r.type==='book'?'book':r.type==='chapter'?'incollection':r.type==='thesis'?'phdthesis':'article';
+    const type = r.type==='book'?'book':r.type==='chapter'?'incollection':r.type==='thesis'?'phdthesis':(r.type==='project'||r.type==='dataset')?'misc':'article';
     const fields = [];
     fields.push(['author', creatorsToBibAuthor(r.author)]);
     fields.push(['year', r.year]);
@@ -646,9 +648,18 @@ function normalizeCinii(item, query){
   }
   const ciniiType = String(item['dc:type']||'').toLowerCase();
   const container = item['prism:publicationName'] || '';
+  const rawUrl = (item.link && item.link['@id']) || item['@id'] || '';
+  // CiNii Research aggregates KAKEN (科研費) research projects, Data, Dissertations,
+  // and ordinary Articles into a single index. CRID prefix 1040 = KAKEN project,
+  // 1050 = Data; dc:type also carries this info.
+  const isProject = /(research project|research_project|project|kaken|grant|科研|研究課題)/i.test(ciniiType)
+                 || /\/crid\/1040/.test(rawUrl);
+  const isData = /^data$|dataset/i.test(ciniiType) || /\/crid\/1050/.test(rawUrl);
   // CiNii lumps book chapters under "Article" — heuristic: 「『…』」 or "(編)" in container means chapter
   let type;
-  if (ciniiType === 'book') type = 'book';
+  if (isProject) type = 'project';
+  else if (isData) type = 'dataset';
+  else if (ciniiType === 'book') type = 'book';
   else if (ciniiType === 'thesis' || /学位論文|博士論文|doctoral/i.test(container)) type = 'thesis';
   else if (container && (/[『「]/.test(container) || /(\(編\)|（編）|編\)|編』)/.test(container))) type = 'chapter';
   else type = 'article';
@@ -665,7 +676,7 @@ function normalizeCinii(item, query){
     else if (t.includes('ISSN')) issn = v;
     else if (t.includes('NCID')) ncid = v;
   }
-  const url = (item.link && item.link['@id']) || item['@id'] || '';
+  const url = rawUrl;
   // Probe dc:source for PDF-shaped URLs (some CiNii records have direct PDF links)
   let pdfUrl = '';
   for (const src of (item['dc:source']||[])){
@@ -1560,7 +1571,15 @@ function card(r, i, kind){
     refsExtractedBadge = '<span class="pill" style="background:#e8f2f3;color:#004e56" title="関連論文を取得済">関連取得済</span>';
   }
   // failed-extraction case: intentionally show no badge (state still tracked internally)
-  const header = unverifiedPill + localBadge + searchHitBadge + '<span class="pill">'+(r.type||'')+'</span><span class="pill">'+(r.year||'n.d.')+'</span>' + extractedBadge + parentBadge + refsExtractedBadge;
+  let typePill;
+  if (r.type === 'project'){
+    typePill = '<span class="pill" style="background:#ede2f5;color:#5a2d8a;border-color:#c5a7e0;font-weight:700" title="科研費等の研究課題（文献ではありません）">🧪 研究課題</span>';
+  } else if (r.type === 'dataset'){
+    typePill = '<span class="pill" style="background:#e2efe2;color:#2d6b3d;border-color:#a7d4af;font-weight:700" title="データセット（文献ではありません）">📊 データセット</span>';
+  } else {
+    typePill = '<span class="pill">'+(r.type||'')+'</span>';
+  }
+  const header = unverifiedPill + localBadge + searchHitBadge + typePill + '<span class="pill">'+(r.year||'n.d.')+'</span>' + extractedBadge + parentBadge + refsExtractedBadge;
   const titleText = r.title || '(タイトル未抽出)';
   const fields = ['id','type','author','year','title','container','publisher','pages','doi','isbn','issn','url','pdf_url','source_checked'];
   const wideFields = ['title','url','pdf_url','source_checked'];
