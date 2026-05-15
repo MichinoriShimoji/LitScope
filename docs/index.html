@@ -97,12 +97,9 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .data-credit{margin-top:12px;padding:10px 12px;border-top:1px dashed var(--line);background:#f8fafb;border-radius:6px}
 .del-btn{background:#fde68a;color:#7a4a02 !important;border-color:#f59e0b}
 .del-btn:hover{background:#fcd34d}
-.pdf-btn{display:inline-flex;align-items:center;gap:4px;background:#d04949;color:#fff !important;padding:3px 10px;border-radius:6px;font-weight:700;text-decoration:none;font-size:12px;box-shadow:0 1px 0 rgba(0,0,0,.08);transition:background .12s}
+.pdf-btn{display:inline-flex;align-items:center;gap:4px;background:#d04949;color:#fff !important;padding:3px 10px;border-radius:6px;font-weight:700;text-decoration:none;font-size:12px;border:0;box-shadow:0 1px 0 rgba(0,0,0,.08);transition:background .12s}
 .pdf-btn:hover{background:#b53636}
 .pdf-btn::before{content:"📄"}
-.pdf-download-btn{display:inline-flex;align-items:center;gap:4px;background:#0f766e;color:#fff !important;padding:3px 10px;border-radius:6px;font-weight:700;text-decoration:none;font-size:12px;border:0;box-shadow:0 1px 0 rgba(0,0,0,.08)}
-.pdf-download-btn:hover{background:#0b5f59}
-.pdf-download-btn::before{content:"↓"}
 .land-btn{display:inline-flex;align-items:center;gap:4px;background:#eef2f7;color:#334a62 !important;padding:3px 10px;border-radius:6px;font-weight:600;text-decoration:none;font-size:12px;border:1px solid #dde3ea}
 .land-btn:hover{background:#dde3ea}
 .land-btn::before{content:"🔗"}
@@ -1757,8 +1754,7 @@ function inputField(name, value, wide=false){
 }
 function card(r, i, kind){
   const pdf = r.pdf_url
-    ? '<a class="pdf-btn" target="_blank" href="'+r.pdf_url+'" title="'+r.pdf_url+'">PDFを開く</a>'
-      + '<button class="pdf-download-btn" onclick="downloadRecordPdf('+i+')" title="'+r.pdf_url+'">PDF保存</button>'
+    ? '<button class="pdf-btn" onclick="downloadRecordPdf('+i+')" title="'+r.pdf_url+'">PDFダウンロード</button>'
     : '';
   const land = r.url ? '<a class="land-btn" target="_blank" href="'+r.url+'" title="'+r.url+'">書誌ページ</a>' : '';
   // Additional candidate URLs (NDL, repository, NAID, etc.) from CiNii enrichment
