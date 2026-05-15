@@ -93,6 +93,9 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .pdf-btn{display:inline-flex;align-items:center;gap:4px;background:#d04949;color:#fff !important;padding:3px 10px;border-radius:6px;font-weight:700;text-decoration:none;font-size:12px;box-shadow:0 1px 0 rgba(0,0,0,.08);transition:background .12s}
 .pdf-btn:hover{background:#b53636}
 .pdf-btn::before{content:"📄"}
+.pdf-download-btn{display:inline-flex;align-items:center;gap:4px;background:#0f766e;color:#fff !important;padding:3px 10px;border-radius:6px;font-weight:700;text-decoration:none;font-size:12px;border:0;box-shadow:0 1px 0 rgba(0,0,0,.08)}
+.pdf-download-btn:hover{background:#0b5f59}
+.pdf-download-btn::before{content:"↓"}
 .land-btn{display:inline-flex;align-items:center;gap:4px;background:#eef2f7;color:#334a62 !important;padding:3px 10px;border-radius:6px;font-weight:600;text-decoration:none;font-size:12px;border:1px solid #dde3ea}
 .land-btn:hover{background:#dde3ea}
 .land-btn::before{content:"🔗"}
@@ -1705,7 +1708,10 @@ function inputField(name, value, wide=false){
   return '<label '+(wide?'class="wide"':'')+'>'+name+'<input data-field="'+name+'" value="'+String(value||'').replace(/"/g,'&quot;')+'"></label>';
 }
 function card(r, i, kind){
-  const pdf = r.pdf_url ? '<a class="pdf-btn" target="_blank" href="'+r.pdf_url+'" title="'+r.pdf_url+'">PDF</a>' : '';
+  const pdf = r.pdf_url
+    ? '<a class="pdf-btn" target="_blank" href="'+r.pdf_url+'" title="'+r.pdf_url+'">PDFを開く</a>'
+      + '<button class="pdf-download-btn" onclick="downloadRecordPdf('+i+')" title="'+r.pdf_url+'">PDF保存</button>'
+    : '';
   const land = r.url ? '<a class="land-btn" target="_blank" href="'+r.url+'" title="'+r.url+'">書誌ページ</a>' : '';
   // Additional candidate URLs (NDL, repository, NAID, etc.) from CiNii enrichment
   const moreLinks = ((r.additional_urls||[]).slice(0, 6).map(u => {
@@ -1997,6 +2003,29 @@ function dlUnverified(){
   if (!u.length){ setStatus('未検証項目はありません。'); return; }
   downloadFile(project+'_unverified.csv', csvRows(u, UNVERIFIED_CSV_HEADER), 'text/csv');
 }
+async function downloadRecordPdf(i){
+  const rec = state.records[i];
+  if (!rec || !rec.pdf_url){
+    setStatus('このカードには PDF URL がありません。');
+    return;
+  }
+  const usedNames = new Set();
+  const filename = pdfFilenameForRecord(rec, usedNames);
+  setStatus('PDF取得中: '+filename);
+  const res = await fetchPdfBlob(rec.pdf_url, 25000);
+  if (res.ok){
+    const url = URL.createObjectURL(res.blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 500);
+    setStatus('PDFを保存しました: '+filename);
+  } else {
+    window.open(rec.pdf_url, '_blank', 'noopener');
+    setStatus('PDFを直接取得できなかったため、元URLを開きました（理由: '+res.reason+'）。');
+  }
+}
 async function dlPdfZip(){
   if (typeof JSZip === 'undefined'){
     setStatus('JSZipのロードに失敗しました。ネットワーク接続を確認してください。');
@@ -2012,6 +2041,7 @@ async function dlPdfZip(){
   $('dlPdfZipBtn').disabled = true;
   setStatus('PDF '+candidates.length+' 件を取得中... (CORS拒否やリンク切れは自動でスキップ)');
   const zip = new JSZip();
+  const pdfFolder = zip.folder('pdfs');
   const usedNames = new Set();
   const report = [];
   let ok = 0, fail = 0, done = 0;
@@ -2026,9 +2056,9 @@ async function dlPdfZip(){
       done++;
       setStatus('PDF '+done+'/'+candidates.length+' 取得済 (成功 '+ok+' / 失敗 '+fail+')');
       if (res.ok){
-        zip.file(filename, res.blob);
+        pdfFolder.file(filename, res.blob);
         ok++;
-        report.push('- ✓ `'+filename+'` ← '+rec.pdf_url);
+        report.push('- ✓ `pdfs/'+filename+'` ← '+rec.pdf_url);
       } else {
         fail++;
         report.push('- ✗ ('+res.reason+') '+rec.pdf_url+'  (cite: '+filename.replace(/\.pdf$/,'')+')');
@@ -2037,12 +2067,20 @@ async function dlPdfZip(){
   }
   try {
     await Promise.all(Array.from({length: CONCURRENCY}, () => worker()));
+    pdfFolder.file('README.md', [
+      '# PDF files',
+      '',
+      'このフォルダには取得できたPDF本体を入れています。',
+      'ファイル名は BibTeX の cite key と対応します。',
+      '取得失敗したPDFはルートの README.md のログを確認してください。',
+    ].join('\n'));
     zip.file('README.md', [
       '# '+project+' — PDFまとめ',
       '',
       '生成日時: '+new Date().toISOString(),
       '対象: 確認済レコード中、pdf_url 登録あり '+candidates.length+' 件',
       '取得結果: 成功 '+ok+' / 失敗 '+fail,
+      'PDF保存先: `pdfs/`',
       '',
       '## 取得ログ',
       '',
@@ -2142,6 +2180,7 @@ async function downloadZip(){
   if (includePdfs){
     const usedNames = new Set();
     const candidates = verified.filter(r => r.pdf_url);
+    const pdfFolder = zip.folder('pdfs');
     if (candidates.length){
       setStatus('ZIP: PDF '+candidates.length+' 件を取得中... (CORS拒否やリンク切れは自動でスキップ)');
       const CONCURRENCY = 4;
@@ -2156,7 +2195,7 @@ async function downloadZip(){
           done++;
           setStatus('ZIP: PDF '+done+'/'+candidates.length+' 取得済 (成功 '+pdfOk+' / 失敗 '+pdfFail+')');
           if (res.ok){
-            zip.file('pdfs/'+filename, res.blob);
+            pdfFolder.file(filename, res.blob);
             pdfOk++;
             pdfReport.push('- ✓ `pdfs/'+filename+'` ← '+rec.pdf_url);
           } else {
@@ -2169,6 +2208,13 @@ async function downloadZip(){
       for (let i = 0; i < CONCURRENCY; i++) workers.push(worker());
       await Promise.all(workers);
     }
+    pdfFolder.file('README.md', [
+      '# PDF files',
+      '',
+      candidates.length
+        ? 'このフォルダには取得できたPDF本体を入れています。ファイル名は BibTeX の cite key と対応します。'
+        : 'PDF URL付きの確認済レコードがなかったため、PDF本体はありません。',
+    ].join('\n'));
   }
   const manifest = [
     '# '+project+' literature export',
@@ -2305,6 +2351,7 @@ ensureLocalDB();
 // Expose for inline onclick
 window.removeRecord = removeRecord;
 window.swapTitle = swapTitle;
+window.downloadRecordPdf = downloadRecordPdf;
 </script>
 </body>
 </html>
