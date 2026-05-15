@@ -230,7 +230,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
 // Constants
 // =============================================================================
 const DEFAULT_PROJECT = 'irabu';
-const CSV_HEADER = ['id','type','author','year','title','container','publisher','place','volume','issue','pages','doi','isbn','issn','url','pdf_url','scope','abstract_note','harvard_reference','source_checked'];
+const CSV_HEADER = ['id','type','author','yomi','year','title','container','publisher','place','volume','issue','pages','doi','isbn','issn','url','pdf_url','scope','abstract_note','harvard_reference','source_checked'];
 const UNVERIFIED_CSV_HEADER = [...CSV_HEADER, 'unverified','verification_failed_reason','derived_from','derived_citation_as_found'];
 
 // =============================================================================
@@ -347,14 +347,16 @@ function creatorsToBibAuthor(author){
 }
 function bibKeyForRecord(r){
   // ASCII-only: "lastname[_lastname...]year" — e.g. shimoji2008, shimoji_hirosawa2022.
-  // CJK / non-ASCII characters are dropped. If nothing remains (e.g., pure
-  // Japanese author), the part is omitted; all-empty falls back to "anon".
+  // For CJK author records, the `yomi` field (Romanized reading from CiNii)
+  // is preferred when present; otherwise the raw author is sanitized and CJK
+  // characters fall away, leaving "anon" if nothing remains.
   const sanitize = (s) => String(s||'')
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g,'') // strip Latin diacritics
     .toLowerCase()
     .replace(/[^a-z0-9]/g,''); // ASCII alphanumerics only
-  const authors = String(r.author||'').split(/;/).map(a => a.trim()).filter(Boolean);
+  const src = String(r.yomi||'').trim() || String(r.author||'');
+  const authors = src.split(/;/).map(a => a.trim()).filter(Boolean);
   let lasts = authors.map(a => sanitize(a.split(',')[0])).filter(Boolean);
   if (lasts.length > 3) lasts = lasts.slice(0,2).concat('etal');
   const lastsJoined = lasts.length ? lasts.join('_') : 'anon';
@@ -377,6 +379,13 @@ function toBib(records, tag){
     const type = r.type==='book'?'book':r.type==='chapter'?'incollection':r.type==='thesis'?'phdthesis':(r.type==='project'||r.type==='dataset')?'misc':'article';
     const fields = [];
     fields.push(['author', creatorsToBibAuthor(r.author)]);
+    if (r.yomi){
+      // `yomi`: recognized by jecon.bst and biblatex-japanese for romaji display.
+      // `sortname`: standard biblatex sort key — keeps CJK entries sorting
+      //             alongside Latin entries by the romanized form.
+      fields.push(['yomi', creatorsToBibAuthor(r.yomi)]);
+      fields.push(['sortname', creatorsToBibAuthor(r.yomi)]);
+    }
     fields.push(['year', r.year]);
     fields.push(['title', r.title]);
     if (type==='article') fields.push(['journal', r.container]);
@@ -549,6 +558,38 @@ async function enrichCiniiUrl(record){
       // subsequent merges don't silently overwrite it.
       if (!/^CiNii/.test(String(record.source_checked||''))){
         record.source_checked = (record.source_checked || '') + ' [CiNii-enriched citation]';
+      }
+    }
+    // ---- 1c) Yomi (romanized author readings) from any ja-Latn variant of
+    //          dc:creator. CiNii stores names in multiple language tags;
+    //          ja-Latn (e.g. "Shimoji, Michinori") is what we want for cite-key
+    //          generation and biblatex sortname.
+    if (!record.yomi){
+      const latnNames = [];
+      const collectLatn = (x) => {
+        if (!x) return;
+        if (Array.isArray(x)){ for (const c of x) collectLatn(c); return; }
+        if (typeof x !== 'object') return;
+        const lang = String(x['@language']||'').toLowerCase();
+        const value = x['@value'];
+        if (value && (lang === 'ja-latn' || lang.endsWith('-latn'))){
+          latnNames.push(String(value).trim());
+        }
+        for (const k of Object.keys(x)){
+          if (k.startsWith('@')) continue;
+          collectLatn(x[k]);
+        }
+      };
+      collectLatn(data['dc:creator']);
+      if (latnNames.length){
+        // Normalize each to "Family, Given" form (mirrors normalizeCinii author handling)
+        const yomi = latnNames.map(s => {
+          const t = s.trim();
+          if (t.includes(',')) return t;
+          const m = t.match(/^(\S+)\s+(.+)$/);
+          return m ? m[1]+', '+m[2] : t;
+        }).join('; ');
+        if (yomi) record.yomi = yomi;
       }
     }
 
@@ -1366,6 +1407,7 @@ function normalizeLocalRecord(rec){
   const r = {
     id: slug((author||'local')+'_'+year+'_'+title),
     type, author, year, title,
+    yomi: String(rec.yomi||'').trim(),
     container: venue,
     publisher: String(rec.publisher||''),
     place: '',
@@ -1590,7 +1632,7 @@ function card(r, i, kind){
   }
   const header = unverifiedPill + localBadge + searchHitBadge + typePill + '<span class="pill">'+(r.year||'n.d.')+'</span>' + extractedBadge + parentBadge + refsExtractedBadge;
   const titleText = r.title || '(タイトル未抽出)';
-  const fields = ['id','type','author','year','title','container','publisher','pages','doi','isbn','issn','url','pdf_url','source_checked'];
+  const fields = ['id','type','author','yomi','year','title','container','publisher','pages','doi','isbn','issn','url','pdf_url','source_checked'];
   const wideFields = ['title','url','pdf_url','source_checked'];
   const altLine = r.alt_title
     ? '<div class="small" style="font-style:italic;color:#996515">alt: '+r.alt_title+' <button style="font-size:11px;padding:2px 6px" onclick="swapTitle('+i+',\''+kind+'\')">この別言語タイトルに置き換える</button></div>'
