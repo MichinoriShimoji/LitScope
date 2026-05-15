@@ -2,7 +2,7 @@
 
 日本語・英語の方言／言語学文献の総合検索システム。GitHub Pages からブラウザだけで使えます。
 
-🔗 https://michinorishimoji.github.io/LitSearch/
+🔗 https://michinorishimoji.github.io/LitScope/
 
 ## 仕組み
 

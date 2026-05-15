@@ -4,7 +4,7 @@
 
 ## 公開URL（GitHub Pages）
 
-🔗 **https://michinorishimoji.github.io/LitSearch/**
+🔗 **https://michinorishimoji.github.io/LitScope/**
 
 ## できること
 
