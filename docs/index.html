@@ -1281,16 +1281,13 @@ async function bulkExtractReferences(){
     state.records = uniqueRecords(state.records);
     persist();
     tab = 'records';
-    if (totalUnverified > 0){
-      const f = $('filterUnverified'); if (f) f.checked = true;
-    }
     render();
     $('bulkExtractBtn').disabled = false;
     setStatus(
       '一括抽出完了:\n'
       +'  対象 '+targets.length+' 親 (PDF経由 '+viaPdf+' / Crossref経由 '+viaCrossref+' / 取得不可 '+viaNone+')\n'
       +'  参考文献 '+totalRefs+' 件処理 → 確認済 '+totalVerified+' / 未検証 '+totalUnverified
-      +(totalUnverified ? '\n\n本体タブで「未検証のみ表示」をONにしました。黄色いカードを編集／削除してから ZIP に進んでください。' : '')
+      +(totalUnverified ? '\n\n未検証（黄色枠）のカードが '+totalUnverified+' 件混ざっています。確認したい場合はサイドバーの「要編集のみ表示」をON。' : '')
     );
   } catch (e){
     $('bulkExtractBtn').disabled = false;
@@ -1721,16 +1718,13 @@ async function search(){
     window._bulkProgressCb = null;
     state.records = uniqueRecords(state.records);
     persist();
-    if (totalUnverified > 0){
-      const f = $('filterUnverified'); if (f) f.checked = true;
-    }
     render();
     setStatus(
       '完了:\n'
       +'  検索ヒット '+initial.length+' 件 (新規 '+addedHits+' 件)\n'
       +'  関連論文取得 '+parents.length+' 元論文 (PDF '+viaPdf+' / Crossref '+viaCrossref+' / 取得不可 '+viaNone+')\n'
       +'  参考文献 '+totalRefs+' 件処理 → 確認済 '+totalVerified+' / 未検証 '+totalUnverified
-      +(totalUnverified ? '\n\n本体タブで「未検証のみ表示」をONにしました。黄色いカードを編集／削除してから ZIP に進んでください。' : '')
+      +(totalUnverified ? '\n\n未検証（黄色枠）のカードが '+totalUnverified+' 件混ざっています。確認したい場合はサイドバーの「要編集のみ表示」をON。' : '')
     );
   } catch (e) {
     setStatus('検索失敗: '+e.message);
