@@ -10,6 +10,7 @@ authors:
     orcid: "https://orcid.org/0000-0002-6185-1453"
 version: "1.0.0"
 date-released: "2026-05-17"
+doi: "10.5281/zenodo.20257984"
 url: "https://michinorishimoji.github.io/LitScope/"
 repository-code: "https://github.com/MichinoriShimoji/LitScope"
 keywords:

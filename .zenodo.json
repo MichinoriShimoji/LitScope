@@ -1,5 +1,6 @@
 {
   "title": "LitScope",
+  "doi": "10.5281/zenodo.20257984",
   "upload_type": "software",
   "description": "A browser-based literature search and export tool for Japanese and Ryukyuan dialect and linguistics research. LitScope combines a local bibliography based on Aoi Matsuoka's Regional Dialect Research Bibliography with live metadata search from CiNii Research, OpenAlex, and Crossref, and exports CSV, BibTeX, Zotero-ready BibTeX, and PDF URL lists.",
   "creators": [

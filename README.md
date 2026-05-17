@@ -6,6 +6,8 @@
 
 🔗 **https://michinorishimoji.github.io/LitScope/**
 
+DOI: https://doi.org/10.5281/zenodo.20257984
+
 ## できること
 
 - **松岡葵氏作成「地域別方言研究文献リスト」（11,000件超）** を基礎データベースとして組み込み
@@ -34,6 +36,7 @@ PDFs は著作権上、リポジトリには含めません（`.gitignore`）。
 ## 著作・データ提供
 
 - ツール **LitScope** 著作：© 2026 **下地理則**（九州大学）
+- LitScope DOI: `10.5281/zenodo.20257984`
 - 基礎データ「地域別方言研究文献リスト」：松岡葵 氏 作成（Zenodo: https://zenodo.org/records/20248983, DOI: `10.5281/zenodo.20248983`）
 
 ## ライセンス
