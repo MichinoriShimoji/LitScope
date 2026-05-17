@@ -1041,17 +1041,26 @@ function uniqueRecords(records){
   }
   return merged.filter(Boolean);
 }
+function normalizeForAuthorSearch(value){
+  return String(value||'')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[・,，、.\s　]+/g, '');
+}
+function authorMatches(recordAuthor, searchAuthor){
+  const needle = normalizeForAuthorSearch(searchAuthor);
+  if (!needle) return true;
+  const hay = normalizeForAuthorSearch(recordAuthor);
+  if (hay.includes(needle)) return true;
+  const parts = String(searchAuthor||'').split(/[;,，、\s　]+/).map(normalizeForAuthorSearch).filter(Boolean);
+  return parts.some(p => p.length >= (/[ぁ-んァ-ヶ一-龯]/.test(p) ? 1 : 2) && hay.includes(p));
+}
 function plausibleResult(record, query, author){
   const haystackTitle = (String(record.title||'')+' '+String(record.container||'')+' '+String(record.abstract_note||'')).toLowerCase();
   const haystackAuthor = String(record.author||'').toLowerCase();
   // Author check: if specified, it must appear in record's author field
   if (author){
-    const a = author.toLowerCase().trim();
-    if (a && !haystackAuthor.includes(a)){
-      // Also try last-name only
-      const last = a.split(/[\s,　]+/)[0];
-      if (!last || !haystackAuthor.includes(last)) return false;
-    }
+    if (!authorMatches(record.author, author)) return false;
   }
   // Query check: at least one keyword should appear (longer threshold for Latin, shorter for CJK)
   if (query){
@@ -1590,11 +1599,7 @@ function searchLocalDB(query, author, rows){
       if (!qTerms.every(t => rec._haystack.indexOf(t) !== -1)) continue;
     }
     if (a){
-      const ah = String(rec.author||'').toLowerCase();
-      if (!ah.includes(a)){
-        const aLast = a.split(/[\s,　]+/)[0];
-        if (!aLast || !ah.includes(aLast)) continue;
-      }
+      if (!authorMatches(rec.author, author)) continue;
     }
     out.push(rec);
     if (out.length >= cap) break;
