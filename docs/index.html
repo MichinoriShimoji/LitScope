@@ -2148,12 +2148,49 @@ function buildLatexSmokeTest(records, bibFilename, project){
     '',
   ].join('\n');
 }
+function addLatexSmokeTestFolder(zip, records, bibContent, project){
+  const folderName = project+'_latex_smoke_test';
+  const bibFilename = project+'_citation_smoke_test.bib';
+  const texFilename = project+'_citation_smoke_test.tex';
+  const folder = zip.folder(folderName);
+  folder.file(bibFilename, bibContent);
+  folder.file(texFilename, buildLatexSmokeTest(records, bibFilename, project));
+  folder.file('README.md', [
+    '# LitScope LaTeX citation smoke test',
+    '',
+    'このフォルダは、BibTeX/cite key の検証用に自動生成されています。',
+    '`'+texFilename+'` と `'+bibFilename+'` は同じフォルダに置いてあるので、このフォルダ内でそのままコンパイルできます。',
+    '',
+    '```bash',
+    'lualatex '+texFilename,
+    'biber '+project+'_citation_smoke_test',
+    'lualatex '+texFilename,
+    'lualatex '+texFilename,
+    '```',
+    '',
+    '全ての確認済レコードの cite key が本文中で一度ずつ引用されます。',
+  ].join('\n'));
+  return { folderName, texFilename, bibFilename };
+}
 function dlLatexTest(){
-  const f = projectFiles(currentProject());
   const project = projectSlug(currentProject());
   const records = verifiedRecords();
   if (!records.length){ setStatus('LaTeX検証用に出力できる確認済レコードがありません。'); return; }
-  downloadFile(project+'_citation_smoke_test.tex', buildLatexSmokeTest(records, f.bib, project), 'application/x-tex');
+  if (typeof JSZip === 'undefined'){
+    setStatus('JSZipのロードに失敗しました。ネットワーク接続を確認してください。');
+    return;
+  }
+  const zip = new JSZip();
+  addLatexSmokeTestFolder(zip, records, toBib(records, ''), project);
+  zip.generateAsync({type:'blob', compression:'DEFLATE'}).then(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = project+'_latex_smoke_test.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 500);
+    setStatus('LaTeX検証ZIPを作成しました: '+a.download);
+  }).catch(e => setStatus('LaTeX検証ZIP生成失敗: '+e.message));
 }
 function dlUnverified(){
   const project = projectSlug(currentProject());
@@ -2370,11 +2407,12 @@ async function downloadZip(){
   const project = projectSlug(currentProject());
   const tag = $('tag').value;
   const zip = new JSZip();
+  const bibContent = toBib(verified, '');
   zip.file(f.csv, csvRows(verified, CSV_HEADER));
-  zip.file(f.bib, toBib(verified, ''));
+  zip.file(f.bib, bibContent);
   zip.file(f.zoteroBib, toBib(verified, tag));
   zip.file(project+'_pdf_urls.md', buildPdfList(verified, project));
-  zip.file(project+'_citation_smoke_test.tex', buildLatexSmokeTest(verified, f.bib, project));
+  const latexSmoke = addLatexSmokeTestFolder(zip, verified, bibContent, project);
   if (unverified.length){
     zip.file(project+'_unverified.csv', csvRows(unverified, UNVERIFIED_CSV_HEADER));
   }
@@ -2427,7 +2465,7 @@ async function downloadZip(){
     '- `'+f.bib+'` — BibTeX（確認済のみ、タグなし）',
     '- `'+f.zoteroBib+'` — BibTeX（確認済のみ、Zotero用 keywords='+tag+' 付き）',
     '- `'+project+'_pdf_urls.md` — PDF URLリスト（確認済のみ）',
-    '- `'+project+'_citation_smoke_test.tex` — 全cite keyを本文に散らしたLaTeX/Biber検証用文書',
+    '- `'+latexSmoke.folderName+'/` — .tex と .bib を並置したLaTeX/Biber検証用フォルダ',
     pdfOk ? '- `pdfs/` — 取得できた PDF '+pdfOk+' 件（ファイル名は BibTeX の cite key と一致）' : '',
     unverified.length ? '- `'+project+'_unverified.csv` — 未検証項目（編集して `unverified` 列をクリアすれば本体に戻せる）' : '',
     '',
